@@ -7,11 +7,10 @@ import * as _ from 'lodash';
 import 'mocha';
 import * as TypeMoq from 'typemoq';
 
+import { DexSample, ERC20BridgeSource } from '../src/sources/types';
 import { MarketOperation, NativeOrderWithFillableAmounts } from '../src/types';
 import {
     CollapsedFill,
-    DexSample,
-    ERC20BridgeSource,
     MultiHopFillData,
     NativeCollapsedFill,
     NativeFillData,

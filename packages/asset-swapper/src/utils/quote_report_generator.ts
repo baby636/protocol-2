@@ -6,9 +6,6 @@ import { MarketOperation, NativeOrderWithFillableAmounts } from '../types';
 
 import {
     CollapsedFill,
-    DexSample,
-    ERC20BridgeSource,
-    FillData,
     MultiHopFillData,
     NativeCollapsedFill,
     NativeFillData,
@@ -16,6 +13,11 @@ import {
     NativeRfqOrderFillData,
 } from './market_operation_utils/types';
 import { QuoteRequestor } from './quote_requestor';
+import {
+    DexSample,
+    ERC20BridgeSource,
+    FillData,
+} from '../sources/types';
 
 export interface QuoteReportEntryBase {
     liquiditySource: ERC20BridgeSource;

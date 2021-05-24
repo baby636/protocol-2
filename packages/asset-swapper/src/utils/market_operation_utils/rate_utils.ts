@@ -1,9 +1,10 @@
 import { BigNumber } from '@0x/utils';
 
+import { DexSample, ERC20BridgeSource } from '../../sources/types';
 import { MarketOperation } from '../../types';
 
 import { SOURCE_FLAGS, ZERO_AMOUNT } from './constants';
-import { DexSample, ERC20BridgeSource, ExchangeProxyOverhead, FeeSchedule, MultiHopFillData } from './types';
+import { ExchangeProxyOverhead, FeeSchedule, MultiHopFillData } from './types';
 
 // tslint:disable:no-bitwise
 

@@ -3,6 +3,7 @@ import { BigNumber, NULL_ADDRESS } from '@0x/utils';
 import * as _ from 'lodash';
 
 import { DEFAULT_INFO_LOGGER, INVALID_SIGNATURE } from '../../constants';
+import { DexSample, ERC20BridgeSource } from '../../sources/types';
 import {
     AssetSwapperContractAddresses,
     MarketOperation,
@@ -40,13 +41,12 @@ import { getBestTwoHopQuote } from './multihop_utils';
 import { createOrdersFromTwoHopSample } from './orders';
 import { PathPenaltyOpts } from './path';
 import { fillsToSortedPaths, findOptimalPathAsync } from './path_optimizer';
-import { DexOrderSampler, getSampleAmounts } from './sampler';
+import { DexOrderSampler } from './sampler';
+import { getSampleAmounts } from './sampler_utils';
 import { SourceFilters } from './source_filters';
 import {
     AggregationError,
     CollapsedFill,
-    DexSample,
-    ERC20BridgeSource,
     GenerateOptimizedOrdersOpts,
     GetMarketOrdersOpts,
     MarketSideLiquidity,
@@ -101,11 +101,11 @@ export class MarketOperationUtils {
         private readonly contractAddresses: AssetSwapperContractAddresses,
         private readonly _orderDomain: OrderDomain,
     ) {
-        this._buySources = BUY_SOURCE_FILTER_BY_CHAIN_ID[_sampler.chainId];
-        this._sellSources = SELL_SOURCE_FILTER_BY_CHAIN_ID[_sampler.chainId];
-        this._feeSources = new SourceFilters(FEE_QUOTE_SOURCES_BY_CHAIN_ID[_sampler.chainId]);
-        this._nativeFeeToken = NATIVE_FEE_TOKEN_BY_CHAIN_ID[_sampler.chainId];
-        this._nativeFeeTokenAmount = NATIVE_FEE_TOKEN_AMOUNT_BY_CHAIN_ID[_sampler.chainId];
+        this._buySources = BUY_SOURCE_FILTER_BY_CHAIN_ID[_sampler.chain.chainId];
+        this._sellSources = SELL_SOURCE_FILTER_BY_CHAIN_ID[_sampler.chain.chainId];
+        this._feeSources = new SourceFilters(FEE_QUOTE_SOURCES_BY_CHAIN_ID[_sampler.chain.chainId]);
+        this._nativeFeeToken = NATIVE_FEE_TOKEN_BY_CHAIN_ID[_sampler.chain.chainId];
+        this._nativeFeeTokenAmount = NATIVE_FEE_TOKEN_AMOUNT_BY_CHAIN_ID[_sampler.chain.chainId];
     }
 
     /**

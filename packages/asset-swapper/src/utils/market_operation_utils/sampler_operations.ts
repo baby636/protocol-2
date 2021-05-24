@@ -1,10 +1,11 @@
 import { ChainId } from '@0x/contract-addresses';
-import { LimitOrderFields } from '@0x/protocol-utils';
 import { BigNumber, logUtils } from '@0x/utils';
 import * as _ from 'lodash';
 
-import { SamplerCallResult, SignedNativeOrder } from '../../types';
-import { ERC20BridgeSamplerContract } from '../../wrappers';
+import { SamplerCallResult } from '../../types';
+
+import { DexSample, ERC20BridgeSource } from '../../sources/types';
+import { Chain } from '../chain';
 
 import { BancorService } from './bancor_service';
 import {
@@ -36,12 +37,12 @@ import {
     OASIS_ROUTER_BY_CHAIN_ID,
     SELL_SOURCE_FILTER_BY_CHAIN_ID,
     UNISWAPV1_ROUTER_BY_CHAIN_ID,
-    UNISWAPV3_CONFIG_BY_CHAIN_ID,
     ZERO_AMOUNT,
 } from './constants';
 import { getLiquidityProvidersForPair } from './liquidity_provider_utils';
 import { getIntermediateTokens } from './multihop_utils';
 import { BalancerPoolsCache, BalancerV2PoolsCache, CreamPoolsCache, PoolsCache } from './pools_cache';
+import { DexOrderSamplerBase }  from './sampler_base';
 import { SamplerContractOperation } from './sampler_contract_operation';
 import { SourceFilters } from './source_filters';
 import {
@@ -52,9 +53,7 @@ import {
     BatchedOperation,
     CurveFillData,
     CurveInfo,
-    DexSample,
     DODOFillData,
-    ERC20BridgeSource,
     GenericRouterFillData,
     HopInfo,
     KyberDmmFillData,
@@ -65,13 +64,14 @@ import {
     MakerPsmFillData,
     MooniswapFillData,
     MultiHopFillData,
+    PoolsCaches,
     PsmInfo,
     ShellFillData,
     SourceQuoteOperation,
+    SourceQuoteOperationResult,
     SourcesWithPoolsCache,
     TokenAdjacencyGraph,
     UniswapV2FillData,
-    UniswapV3FillData,
 } from './types';
 
 /**
@@ -86,17 +86,28 @@ export const TWO_HOP_SOURCE_FILTERS = SourceFilters.all().exclude([
  */
 export const BATCH_SOURCE_FILTERS = SourceFilters.all().exclude([ERC20BridgeSource.MultiHop, ERC20BridgeSource.Native]);
 
+export interface SamplerOperationsOpts {
+    chain: Chain;
+    poolsCaches?: { [key in SourcesWithPoolsCache]: PoolsCache };
+    tokenAdjacencyGraph?: TokenAdjacencyGraph;
+    liquidityProviderRegistry?: LiquidityProviderRegistry;
+    bancorServiceFn?: () => Promise<BancorService | undefined>;
+}
+
 // tslint:disable:no-inferred-empty-object-type no-unbound-method
 
 /**
  * Composable operations that can be batched in a single transaction,
  * for use with `DexOrderSampler.executeAsync()`.
  */
-export class SamplerOperations {
-    public readonly liquidityProviderRegistry: LiquidityProviderRegistry;
-    public readonly poolsCaches: { [key in SourcesWithPoolsCache]: PoolsCache };
-    protected _bancorService?: BancorService;
-    public static constant<T>(result: T): BatchedOperation<T> {
+export class SamplerOperations extends DexOrderSamplerBase {
+    private readonly _liquidityProviderRegistry: LiquidityProviderRegistry;
+    private readonly _poolsCaches: PoolsCaches;
+    private readonly _chainId: ChainId;
+    private readonly _tokenAdjacencyGraph: TokenAdjacencyGraph;
+    private _bancorService?: BancorService;
+
+    private static constant<T>(result: T): BatchedOperation<T> {
         return {
             encodeCall: () => '0x',
             handleCallResults: _callResults => result,
@@ -104,38 +115,48 @@ export class SamplerOperations {
         };
     }
 
-    constructor(
-        public readonly chainId: ChainId,
-        protected readonly _samplerContract: ERC20BridgeSamplerContract,
-        poolsCaches?: { [key in SourcesWithPoolsCache]: PoolsCache },
-        protected readonly tokenAdjacencyGraph: TokenAdjacencyGraph = { default: [] },
-        liquidityProviderRegistry: LiquidityProviderRegistry = {},
-        bancorServiceFn: () => Promise<BancorService | undefined> = async () => undefined,
-    ) {
-        this.liquidityProviderRegistry = {
-            ...LIQUIDITY_PROVIDER_REGISTRY_BY_CHAIN_ID[chainId],
-            ...liquidityProviderRegistry,
+    constructor(opts: SamplerOperationsOpts) {
+        super(opts.chain);
+        const _opts = {
+            tokenAdjacencyGraph: { default: [] },
+            liquidityProviderRegistry: {},
+            bancorServiceFn: async () => undefined,
+            ...opts,
         };
-        this.poolsCaches = poolsCaches
-            ? poolsCaches
+
+        this._tokenAdjacencyGraph = _opts.tokenAdjacencyGraph;
+        this._chainId = _opts.chain.chainId;
+        this._liquidityProviderRegistry = {
+            ...LIQUIDITY_PROVIDER_REGISTRY_BY_CHAIN_ID[this._chainId],
+            ..._opts.liquidityProviderRegistry,
+        };
+        this._poolsCaches = _opts.poolsCaches
+            ? _opts.poolsCaches
             : {
                   [ERC20BridgeSource.BalancerV2]: new BalancerV2PoolsCache(),
                   [ERC20BridgeSource.Balancer]: new BalancerPoolsCache(),
                   [ERC20BridgeSource.Cream]: new CreamPoolsCache(),
               };
         // Initialize the Bancor service, fetching paths in the background
-        bancorServiceFn()
+        _opts.bancorServiceFn()
             .then(service => (this._bancorService = service))
             .catch(/* do nothing */);
     }
 
+    public get poolsCaches(): PoolsCaches {
+        return this._poolsCaches;
+    }
+
     public getTokenDecimals(tokens: string[]): BatchedOperation<BigNumber[]> {
-        return new SamplerContractOperation({
-            source: ERC20BridgeSource.Native,
-            contract: this._samplerContract,
-            function: this._samplerContract.getTokenDecimals,
-            params: [tokens],
-        });
+        return {
+            encodeCall: () => this._samplerContract.getTokenDecimals(tokens).getABIEncodedTransactionData(),
+            handleCallResults: (callResults: string) =>
+                this._samplerContract.getABIDecodedReturnData<BigNumber[]>('getTokenDecimals', callResults),
+            handleRevert: () => {
+                /* should never happen */
+                throw new Error('Could not retrieve token decimals');
+            },
+        };
     }
 
     public isAddressContract(address: string): BatchedOperation<boolean> {
@@ -150,46 +171,6 @@ export class SamplerOperations {
         };
     }
 
-    public getLimitOrderFillableTakerAmounts(
-        orders: SignedNativeOrder[],
-        exchangeAddress: string,
-    ): BatchedOperation<BigNumber[]> {
-        // Skip checking empty or invalid orders on-chain, returning a constant
-        if (orders.length === 0) {
-            return SamplerOperations.constant<BigNumber[]>([]);
-        }
-        if (orders.length === 1 && orders[0].order.maker === NULL_ADDRESS) {
-            return SamplerOperations.constant<BigNumber[]>([ZERO_AMOUNT]);
-        }
-        return new SamplerContractOperation({
-            source: ERC20BridgeSource.Native,
-            contract: this._samplerContract,
-            function: this._samplerContract.getLimitOrderFillableTakerAssetAmounts,
-            // tslint:disable-next-line:no-unnecessary-type-assertion
-            params: [orders.map(o => o.order as LimitOrderFields), orders.map(o => o.signature), exchangeAddress],
-        });
-    }
-
-    public getLimitOrderFillableMakerAmounts(
-        orders: SignedNativeOrder[],
-        exchangeAddress: string,
-    ): BatchedOperation<BigNumber[]> {
-        // Skip checking empty or invalid orders on-chain, returning a constant
-        if (orders.length === 0) {
-            return SamplerOperations.constant<BigNumber[]>([]);
-        }
-        if (orders.length === 1 && orders[0].order.maker === NULL_ADDRESS) {
-            return SamplerOperations.constant<BigNumber[]>([ZERO_AMOUNT]);
-        }
-        return new SamplerContractOperation({
-            source: ERC20BridgeSource.Native,
-            contract: this._samplerContract,
-            function: this._samplerContract.getLimitOrderFillableMakerAssetAmounts,
-            // tslint:disable-next-line:no-unnecessary-type-assertion
-            params: [orders.map(o => o.order as LimitOrderFields), orders.map(o => o.signature), exchangeAddress],
-        });
-    }
-
     public getKyberSellQuotes(
         kyberOpts: KyberSamplerOpts,
         reserveOffset: BigNumber,
@@ -202,14 +183,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromKyberNetwork,
             params: [{ ...kyberOpts, reserveOffset, hint: NULL_BYTES }, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: KyberFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: KyberFillData): SourceQuoteOperationResult<KyberFillData>[] => {
                 const [reserveId, hint, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string, BigNumber[]]
                 >('sampleSellsFromKyberNetwork', callResults);
-                fillData.hint = hint;
-                fillData.reserveId = reserveId;
-                fillData.networkProxy = kyberOpts.networkProxy;
-                return isAllowedKyberReserveId(reserveId) ? samples : [];
+                return (isAllowedKyberReserveId(reserveId) ? samples : []).map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        hint,
+                        reserveId: reserveId,
+                        networkProxy: kyberOpts.networkProxy,
+                    }
+                }));
             },
         });
     }
@@ -226,14 +211,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromKyberNetwork,
             params: [{ ...kyberOpts, reserveOffset, hint: NULL_BYTES }, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: KyberFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: KyberFillData): SourceQuoteOperationResult<KyberFillData>[] => {
                 const [reserveId, hint, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string, BigNumber[]]
                 >('sampleBuysFromKyberNetwork', callResults);
-                fillData.hint = hint;
-                fillData.reserveId = reserveId;
-                fillData.networkProxy = kyberOpts.networkProxy;
-                return isAllowedKyberReserveId(reserveId) ? samples : [];
+                return (isAllowedKyberReserveId(reserveId) ? samples : []).map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        hint,
+                        reserveId: reserveId,
+                        networkProxy: kyberOpts.networkProxy,
+                    }
+                }));
             },
         });
     }
@@ -248,15 +237,19 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromKyberDmm,
             params: [router, tokenAddressPath, takerFillAmounts],
-            callback: (callResults: string, fillData: KyberDmmFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: KyberDmmFillData): SourceQuoteOperationResult<KyberDmmFillData>[] => {
                 const [pools, samples] = this._samplerContract.getABIDecodedReturnData<[string[], BigNumber[]]>(
                     'sampleSellsFromKyberDmm',
                     callResults,
                 );
-                fillData.poolsPath = pools;
-                fillData.router = router;
-                fillData.tokenAddressPath = tokenAddressPath;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        poolsPath: pools,
+                        router: router,
+                        tokenAddressPath: tokenAddressPath,
+                    }
+                }));
             },
         });
     }
@@ -271,15 +264,19 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromKyberDmm,
             params: [router, tokenAddressPath, makerFillAmounts],
-            callback: (callResults: string, fillData: KyberDmmFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: KyberDmmFillData): SourceQuoteOperationResult<KyberDmmFillData>[] => {
                 const [pools, samples] = this._samplerContract.getABIDecodedReturnData<[string[], BigNumber[]]>(
                     'sampleBuysFromKyberDmm',
                     callResults,
                 );
-                fillData.poolsPath = pools;
-                fillData.router = router;
-                fillData.tokenAddressPath = tokenAddressPath;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        poolsPath: pools,
+                        router: router,
+                        tokenAddressPath: tokenAddressPath,
+                    }
+                }));
             },
         });
     }
@@ -291,8 +288,8 @@ export class SamplerOperations {
         takerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<GenericRouterFillData> {
         // Uniswap uses ETH instead of WETH, represented by address(0)
-        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
-        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
+        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : takerToken;
+        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
             fillData: { router },
@@ -309,8 +306,8 @@ export class SamplerOperations {
         makerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<GenericRouterFillData> {
         // Uniswap uses ETH instead of WETH, represented by address(0)
-        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
-        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
+        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : takerToken;
+        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
             fillData: { router },
@@ -638,13 +635,17 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBancor,
             params: [{ registry, paths }, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: BancorFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: BancorFillData): SourceQuoteOperationResult<BancorFillData>[] => {
                 const [networkAddress, path, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string[], BigNumber[]]
                 >('sampleSellsFromBancor', callResults);
-                fillData.networkAddress = networkAddress;
-                fillData.path = path;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        networkAddress: networkAddress,
+                        path: path,
+                    },
+                }));
             },
         });
     }
@@ -661,13 +662,17 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBancor,
             params: [{ registry, paths: [] }, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: BancorFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: BancorFillData): SourceQuoteOperationResult<BancorFillData>[] => {
                 const [networkAddress, path, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string[], BigNumber[]]
                 >('sampleBuysFromBancor', callResults);
-                fillData.networkAddress = networkAddress;
-                fillData.path = path;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        networkAddress: networkAddress,
+                        path: path,
+                    },
+                }));
             },
         });
     }
@@ -680,21 +685,25 @@ export class SamplerOperations {
     ): SourceQuoteOperation<MooniswapFillData> {
         // Mooniswap uses ETH instead of WETH, represented by address(0)
         const mooniswapTakerToken =
-            takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
+            takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : takerToken;
         const mooniswapMakerToken =
-            makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
+            makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Mooniswap,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMooniswap,
             params: [registry, mooniswapTakerToken, mooniswapMakerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: MooniswapFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: MooniswapFillData): SourceQuoteOperationResult<MooniswapFillData>[] => {
                 const [poolAddress, samples] = this._samplerContract.getABIDecodedReturnData<[string, BigNumber[]]>(
                     'sampleSellsFromMooniswap',
                     callResults,
                 );
-                fillData.poolAddress = poolAddress;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        poolAddress: poolAddress,
+                    },
+                }));
             },
         });
     }
@@ -707,21 +716,25 @@ export class SamplerOperations {
     ): SourceQuoteOperation<MooniswapFillData> {
         // Mooniswap uses ETH instead of WETH, represented by address(0)
         const mooniswapTakerToken =
-            takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
+            takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : takerToken;
         const mooniswapMakerToken =
-            makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
+            makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Mooniswap,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMooniswap,
             params: [registry, mooniswapTakerToken, mooniswapMakerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: MooniswapFillData): BigNumber[] => {
+            callback: (callResults: string, _fillData: MooniswapFillData): SourceQuoteOperationResult<MooniswapFillData>[] => {
                 const [poolAddress, samples] = this._samplerContract.getABIDecodedReturnData<[string, BigNumber[]]>(
                     'sampleBuysFromMooniswap',
                     callResults,
                 );
-                fillData.poolAddress = poolAddress;
-                return samples;
+                return samples.map(s => ({
+                    outputAmount: s,
+                    fillData: {
+                        poolAddress: poolAddress,
+                    },
+                }));
             },
         });
     }
@@ -792,7 +805,7 @@ export class SamplerOperations {
         if (_sources.length === 0) {
             return SamplerOperations.constant([]);
         }
-        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this.tokenAdjacencyGraph);
+        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this._tokenAdjacencyGraph);
         const subOps = intermediateTokens.map(intermediateToken => {
             const firstHopOps = this._getSellQuoteOperations(_sources, intermediateToken, takerToken, [ZERO_AMOUNT]);
             const secondHopOps = this._getSellQuoteOperations(_sources, makerToken, intermediateToken, [ZERO_AMOUNT]);
@@ -802,18 +815,20 @@ export class SamplerOperations {
                 function: this._samplerContract.sampleTwoHopSell,
                 params: [firstHopOps.map(op => op.encodeCall()), secondHopOps.map(op => op.encodeCall()), sellAmount],
                 fillData: { intermediateToken } as MultiHopFillData, // tslint:disable-line:no-object-literal-type-assertion
-                callback: (callResults: string, fillData: MultiHopFillData): BigNumber[] => {
+                callback: (callResults: string, fillData: MultiHopFillData): SourceQuoteOperationResult<MultiHopFillData>[] => {
                     const [firstHop, secondHop, buyAmount] = this._samplerContract.getABIDecodedReturnData<
                         [HopInfo, HopInfo, BigNumber]
                     >('sampleTwoHopSell', callResults);
+                    firstHopSource.handleCallResults(firstHop.returnData);
+                    secondHopSource.handleCallResults(secondHop.returnData);
+                    return [{
+                        outputAmount: buyAmount.isZero() ? ZERO_AMOUNT : buyAmount,
+                        fillData: {
+                            firstHopSource = firstHopOps[firstHop.sourceIndex.toNumber()];
+                            secondHopSource = secondHopOps[secondHop.sourceIndex.toNumber()];
+                        },
+                    }];
                     // Ensure the hop sources are set even when the buy amount is zero
-                    fillData.firstHopSource = firstHopOps[firstHop.sourceIndex.toNumber()];
-                    fillData.secondHopSource = secondHopOps[secondHop.sourceIndex.toNumber()];
-                    if (buyAmount.isZero()) {
-                        return [ZERO_AMOUNT];
-                    }
-                    fillData.firstHopSource.handleCallResults(firstHop.returnData);
-                    fillData.secondHopSource.handleCallResults(secondHop.returnData);
                     return [buyAmount];
                 },
             });
@@ -847,7 +862,7 @@ export class SamplerOperations {
         if (_sources.length === 0) {
             return SamplerOperations.constant([]);
         }
-        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this.tokenAdjacencyGraph);
+        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this._tokenAdjacencyGraph);
         const subOps = intermediateTokens.map(intermediateToken => {
             const firstHopOps = this._getBuyQuoteOperations(_sources, intermediateToken, takerToken, [
                 new BigNumber(0),
@@ -1142,13 +1157,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-        tokenAdjacencyGraph: TokenAdjacencyGraph = this.tokenAdjacencyGraph,
+        tokenAdjacencyGraph: TokenAdjacencyGraph = this._tokenAdjacencyGraph,
     ): SourceQuoteOperation[] {
         // Find the adjacent tokens in the provided tooken adjacency graph,
         // e.g if this is DAI->USDC we may check for DAI->WETH->USDC
         const intermediateTokens = getIntermediateTokens(makerToken, takerToken, tokenAdjacencyGraph);
         // Drop out MultiHop and Native as we do not query those here.
-        const _sources = SELL_SOURCE_FILTER_BY_CHAIN_ID[this.chainId]
+        const _sources = SELL_SOURCE_FILTER_BY_CHAIN_ID[this._chainId]
             .exclude([ERC20BridgeSource.MultiHop, ERC20BridgeSource.Native])
             .getAllowed(sources);
         const allOps = _.flatten(
@@ -1159,18 +1174,18 @@ export class SamplerOperations {
                     }
                     switch (source) {
                         case ERC20BridgeSource.Eth2Dai:
-                            return isValidAddress(OASIS_ROUTER_BY_CHAIN_ID[this.chainId])
+                            return isValidAddress(OASIS_ROUTER_BY_CHAIN_ID[this._chainId])
                                 ? this.getEth2DaiSellQuotes(
-                                      OASIS_ROUTER_BY_CHAIN_ID[this.chainId],
+                                      OASIS_ROUTER_BY_CHAIN_ID[this._chainId],
                                       makerToken,
                                       takerToken,
                                       takerFillAmounts,
                                   )
                                 : [];
                         case ERC20BridgeSource.Uniswap:
-                            return isValidAddress(UNISWAPV1_ROUTER_BY_CHAIN_ID[this.chainId])
+                            return isValidAddress(UNISWAPV1_ROUTER_BY_CHAIN_ID[this._chainId])
                                 ? this.getUniswapSellQuotes(
-                                      UNISWAPV1_ROUTER_BY_CHAIN_ID[this.chainId],
+                                      UNISWAPV1_ROUTER_BY_CHAIN_ID[this._chainId],
                                       makerToken,
                                       takerToken,
                                       takerFillAmounts,
@@ -1198,7 +1213,7 @@ export class SamplerOperations {
                                 ...intermediateTokens.map(t => [takerToken, t, makerToken]),
                             ].map(path => this.getUniswapV2SellQuotes(uniLikeRouter, path, takerFillAmounts, source));
                         case ERC20BridgeSource.KyberDmm:
-                            const kyberDmmRouter = KYBER_DMM_ROUTER_BY_CHAIN_ID[this.chainId];
+                            const kyberDmmRouter = KYBER_DMM_ROUTER_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(kyberDmmRouter)) {
                                 return [];
                             }
@@ -1210,7 +1225,7 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Kyber:
                             return getKyberOffsets().map(offset =>
                                 this.getKyberSellQuotes(
-                                    KYBER_CONFIG_BY_CHAIN_ID[this.chainId],
+                                    KYBER_CONFIG_BY_CHAIN_ID[this._chainId],
                                     offset,
                                     makerToken,
                                     takerToken,
@@ -1225,7 +1240,7 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Ellipsis:
                         case ERC20BridgeSource.Saddle:
                         case ERC20BridgeSource.XSigma:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getCurveLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getCurveSellQuotes(
                                     pool,
                                     pool.takerTokenIdx,
@@ -1235,7 +1250,7 @@ export class SamplerOperations {
                                 ),
                             );
                         case ERC20BridgeSource.Smoothy:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getCurveLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getSmoothySellQuotes(
                                     pool,
                                     pool.tokens.indexOf(takerToken),
@@ -1245,12 +1260,12 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.Shell:
                         case ERC20BridgeSource.Component:
-                            return getShellLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getShellLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getShellSellQuotes(pool, makerToken, takerToken, takerFillAmounts, source),
                             );
                         case ERC20BridgeSource.LiquidityProvider:
                             return getLiquidityProvidersForPair(
-                                this.liquidityProviderRegistry,
+                                this._liquidityProviderRegistry,
                                 takerToken,
                                 makerToken,
                             ).map(({ providerAddress, gasCost }) =>
@@ -1263,12 +1278,12 @@ export class SamplerOperations {
                                 ),
                             );
                         case ERC20BridgeSource.MStable:
-                            return getShellLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getShellLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getMStableSellQuotes(pool, makerToken, takerToken, takerFillAmounts),
                             );
                         case ERC20BridgeSource.Mooniswap:
                             return [
-                                ...MOONISWAP_REGISTRIES_BY_CHAIN_ID[this.chainId]
+                                ...MOONISWAP_REGISTRIES_BY_CHAIN_ID[this._chainId]
                                     .filter(r => isValidAddress(r))
                                     .map(registry =>
                                         this.getMooniswapSellQuotes(registry, makerToken, takerToken, takerFillAmounts),
@@ -1276,7 +1291,7 @@ export class SamplerOperations {
                             ];
                         case ERC20BridgeSource.Balancer:
                             return (
-                                this.poolsCaches[ERC20BridgeSource.Balancer].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.Balancer].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || []
@@ -1291,12 +1306,12 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.BalancerV2:
                             const poolIds =
-                                this.poolsCaches[ERC20BridgeSource.BalancerV2].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.BalancerV2].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || [];
 
-                            const vault = BALANCER_V2_VAULT_ADDRESS_BY_CHAIN[this.chainId];
+                            const vault = BALANCER_V2_VAULT_ADDRESS_BY_CHAIN[this._chainId];
                             if (vault === NULL_ADDRESS) {
                                 return [];
                             }
@@ -1312,7 +1327,7 @@ export class SamplerOperations {
 
                         case ERC20BridgeSource.Cream:
                             return (
-                                this.poolsCaches[ERC20BridgeSource.Cream].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.Cream].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || []
@@ -1337,7 +1352,7 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.DodoV2:
                             return _.flatten(
-                                DODOV2_FACTORIES_BY_CHAIN_ID[this.chainId]
+                                DODOV2_FACTORIES_BY_CHAIN_ID[this._chainId]
                                     .filter(factory => isValidAddress(factory))
                                     .map(factory =>
                                         getDodoV2Offsets().map(offset =>
@@ -1352,17 +1367,17 @@ export class SamplerOperations {
                                     ),
                             );
                         case ERC20BridgeSource.Bancor:
-                            if (!isValidAddress(BANCOR_REGISTRY_BY_CHAIN_ID[this.chainId])) {
+                            if (!isValidAddress(BANCOR_REGISTRY_BY_CHAIN_ID[this._chainId])) {
                                 return [];
                             }
                             return this.getBancorSellQuotes(
-                                BANCOR_REGISTRY_BY_CHAIN_ID[this.chainId],
+                                BANCOR_REGISTRY_BY_CHAIN_ID[this._chainId],
                                 makerToken,
                                 takerToken,
                                 takerFillAmounts,
                             );
                         case ERC20BridgeSource.Linkswap:
-                            if (!isValidAddress(LINKSWAP_ROUTER_BY_CHAIN_ID[this.chainId])) {
+                            if (!isValidAddress(LINKSWAP_ROUTER_BY_CHAIN_ID[this._chainId])) {
                                 return [];
                             }
                             return [
@@ -1372,20 +1387,20 @@ export class SamplerOperations {
                                 }).map(t => [takerToken, t, makerToken]),
                             ].map(path =>
                                 this.getUniswapV2SellQuotes(
-                                    LINKSWAP_ROUTER_BY_CHAIN_ID[this.chainId],
+                                    LINKSWAP_ROUTER_BY_CHAIN_ID[this._chainId],
                                     path,
                                     takerFillAmounts,
                                     ERC20BridgeSource.Linkswap,
                                 ),
                             );
                         case ERC20BridgeSource.MakerPsm:
-                            const psmInfo = MAKER_PSM_INFO_BY_CHAIN_ID[this.chainId];
+                            const psmInfo = MAKER_PSM_INFO_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(psmInfo.psmAddress)) {
                                 return [];
                             }
                             return this.getMakerPsmSellQuotes(psmInfo, makerToken, takerToken, takerFillAmounts);
                         case ERC20BridgeSource.UniswapV3: {
-                            const { quoter, router } = UNISWAPV3_CONFIG_BY_CHAIN_ID[this.chainId];
+                            const { quoter, router } = UNISWAPV3_CONFIG_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(router) || !isValidAddress(quoter)) {
                                 return [];
                             }
@@ -1411,25 +1426,25 @@ export class SamplerOperations {
     ): SourceQuoteOperation[] {
         // Find the adjacent tokens in the provided tooken adjacency graph,
         // e.g if this is DAI->USDC we may check for DAI->WETH->USDC
-        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this.tokenAdjacencyGraph);
+        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this._tokenAdjacencyGraph);
         const _sources = BATCH_SOURCE_FILTERS.getAllowed(sources);
         return _.flatten(
             _sources.map(
                 (source): SourceQuoteOperation | SourceQuoteOperation[] => {
                     switch (source) {
                         case ERC20BridgeSource.Eth2Dai:
-                            return isValidAddress(OASIS_ROUTER_BY_CHAIN_ID[this.chainId])
+                            return isValidAddress(OASIS_ROUTER_BY_CHAIN_ID[this._chainId])
                                 ? this.getEth2DaiBuyQuotes(
-                                      OASIS_ROUTER_BY_CHAIN_ID[this.chainId],
+                                      OASIS_ROUTER_BY_CHAIN_ID[this._chainId],
                                       makerToken,
                                       takerToken,
                                       makerFillAmounts,
                                   )
                                 : [];
                         case ERC20BridgeSource.Uniswap:
-                            return isValidAddress(UNISWAPV1_ROUTER_BY_CHAIN_ID[this.chainId])
+                            return isValidAddress(UNISWAPV1_ROUTER_BY_CHAIN_ID[this._chainId])
                                 ? this.getUniswapBuyQuotes(
-                                      UNISWAPV1_ROUTER_BY_CHAIN_ID[this.chainId],
+                                      UNISWAPV1_ROUTER_BY_CHAIN_ID[this._chainId],
                                       makerToken,
                                       takerToken,
                                       makerFillAmounts,
@@ -1457,7 +1472,7 @@ export class SamplerOperations {
                                 ...intermediateTokens.map(t => [takerToken, t, makerToken]),
                             ].map(path => this.getUniswapV2BuyQuotes(uniLikeRouter, path, makerFillAmounts, source));
                         case ERC20BridgeSource.KyberDmm:
-                            const kyberDmmRouter = KYBER_DMM_ROUTER_BY_CHAIN_ID[this.chainId];
+                            const kyberDmmRouter = KYBER_DMM_ROUTER_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(kyberDmmRouter)) {
                                 return [];
                             }
@@ -1469,7 +1484,7 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Kyber:
                             return getKyberOffsets().map(offset =>
                                 this.getKyberBuyQuotes(
-                                    KYBER_CONFIG_BY_CHAIN_ID[this.chainId],
+                                    KYBER_CONFIG_BY_CHAIN_ID[this._chainId],
                                     offset,
                                     makerToken,
                                     takerToken,
@@ -1484,7 +1499,7 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Ellipsis:
                         case ERC20BridgeSource.Saddle:
                         case ERC20BridgeSource.XSigma:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getCurveLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getCurveBuyQuotes(
                                     pool,
                                     pool.takerTokenIdx,
@@ -1494,7 +1509,7 @@ export class SamplerOperations {
                                 ),
                             );
                         case ERC20BridgeSource.Smoothy:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getCurveLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getSmoothyBuyQuotes(
                                     pool,
                                     pool.tokens.indexOf(takerToken),
@@ -1504,12 +1519,12 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.Shell:
                         case ERC20BridgeSource.Component:
-                            return getShellLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getShellLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getShellBuyQuotes(pool, makerToken, takerToken, makerFillAmounts, source),
                             );
                         case ERC20BridgeSource.LiquidityProvider:
                             return getLiquidityProvidersForPair(
-                                this.liquidityProviderRegistry,
+                                this._liquidityProviderRegistry,
                                 takerToken,
                                 makerToken,
                             ).map(({ providerAddress, gasCost }) =>
@@ -1522,12 +1537,12 @@ export class SamplerOperations {
                                 ),
                             );
                         case ERC20BridgeSource.MStable:
-                            return getShellLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
+                            return getShellLikeInfosForPair(this._chainId, takerToken, makerToken, source).map(pool =>
                                 this.getMStableBuyQuotes(pool, makerToken, takerToken, makerFillAmounts),
                             );
                         case ERC20BridgeSource.Mooniswap:
                             return [
-                                ...MOONISWAP_REGISTRIES_BY_CHAIN_ID[this.chainId]
+                                ...MOONISWAP_REGISTRIES_BY_CHAIN_ID[this._chainId]
                                     .filter(r => isValidAddress(r))
                                     .map(registry =>
                                         this.getMooniswapBuyQuotes(registry, makerToken, takerToken, makerFillAmounts),
@@ -1535,7 +1550,7 @@ export class SamplerOperations {
                             ];
                         case ERC20BridgeSource.Balancer:
                             return (
-                                this.poolsCaches[ERC20BridgeSource.Balancer].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.Balancer].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || []
@@ -1550,12 +1565,12 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.BalancerV2:
                             const poolIds =
-                                this.poolsCaches[ERC20BridgeSource.BalancerV2].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.BalancerV2].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || [];
 
-                            const vault = BALANCER_V2_VAULT_ADDRESS_BY_CHAIN[this.chainId];
+                            const vault = BALANCER_V2_VAULT_ADDRESS_BY_CHAIN[this._chainId];
                             if (vault === NULL_ADDRESS) {
                                 return [];
                             }
@@ -1570,7 +1585,7 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.Cream:
                             return (
-                                this.poolsCaches[ERC20BridgeSource.Cream].getCachedPoolAddressesForPair(
+                                this._poolsCaches[ERC20BridgeSource.Cream].getCachedPoolAddressesForPair(
                                     takerToken,
                                     makerToken,
                                 ) || []
@@ -1595,7 +1610,7 @@ export class SamplerOperations {
                             );
                         case ERC20BridgeSource.DodoV2:
                             return _.flatten(
-                                DODOV2_FACTORIES_BY_CHAIN_ID[this.chainId]
+                                DODOV2_FACTORIES_BY_CHAIN_ID[this._chainId]
                                     .filter(factory => isValidAddress(factory))
                                     .map(factory =>
                                         getDodoV2Offsets().map(offset =>
@@ -1614,7 +1629,7 @@ export class SamplerOperations {
                             // return this.getBancorBuyQuotes(makerToken, takerToken, makerFillAmounts);
                             return [];
                         case ERC20BridgeSource.Linkswap:
-                            if (!isValidAddress(LINKSWAP_ROUTER_BY_CHAIN_ID[this.chainId])) {
+                            if (!isValidAddress(LINKSWAP_ROUTER_BY_CHAIN_ID[this._chainId])) {
                                 return [];
                             }
                             return [
@@ -1625,20 +1640,20 @@ export class SamplerOperations {
                                 }).map(t => [takerToken, t, makerToken]),
                             ].map(path =>
                                 this.getUniswapV2BuyQuotes(
-                                    LINKSWAP_ROUTER_BY_CHAIN_ID[this.chainId],
+                                    LINKSWAP_ROUTER_BY_CHAIN_ID[this._chainId],
                                     path,
                                     makerFillAmounts,
                                     ERC20BridgeSource.Linkswap,
                                 ),
                             );
                         case ERC20BridgeSource.MakerPsm:
-                            const psmInfo = MAKER_PSM_INFO_BY_CHAIN_ID[this.chainId];
+                            const psmInfo = MAKER_PSM_INFO_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(psmInfo.psmAddress)) {
                                 return [];
                             }
                             return this.getMakerPsmBuyQuotes(psmInfo, makerToken, takerToken, makerFillAmounts);
                         case ERC20BridgeSource.UniswapV3: {
-                            const { quoter, router } = UNISWAPV3_CONFIG_BY_CHAIN_ID[this.chainId];
+                            const { quoter, router } = UNISWAPV3_CONFIG_BY_CHAIN_ID[this._chainId];
                             if (!isValidAddress(router) || !isValidAddress(quoter)) {
                                 return [];
                             }

@@ -1,12 +1,12 @@
 import { BigNumber } from '@0x/utils';
 import * as _ from 'lodash';
 
+import { DexSample } from '../../sources/types';
 import { Omit } from '../../types';
 
 import { ZERO_AMOUNT } from './constants';
 import { getTwoHopAdjustedRate } from './rate_utils';
 import {
-    DexSample,
     ExchangeProxyOverhead,
     FeeSchedule,
     MarketSideLiquidity,

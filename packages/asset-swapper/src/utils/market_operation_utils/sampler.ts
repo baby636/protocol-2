@@ -1,47 +1,39 @@
-import { ChainId } from '@0x/contract-addresses';
-import { BigNumber, NULL_BYTES } from '@0x/utils';
+import { NULL_BYTES } from '@0x/utils';
 
-import { SamplerOverrides } from '../../types';
-import { ERC20BridgeSamplerContract } from '../../wrappers';
+import { Chain } from '../chain';
 
 import { BancorService } from './bancor_service';
 import { PoolsCache } from './pools_cache';
 import { SamplerOperations } from './sampler_operations';
-import { BatchedOperation, ERC20BridgeSource, LiquidityProviderRegistry, TokenAdjacencyGraph } from './types';
-
-/**
- * Generate sample amounts up to `maxFillAmount`.
- */
-export function getSampleAmounts(maxFillAmount: BigNumber, numSamples: number, expBase: number = 1): BigNumber[] {
-    const distribution = [...Array<BigNumber>(numSamples)].map((_v, i) => new BigNumber(expBase).pow(i));
-    const stepSizes = distribution.map(d => d.div(BigNumber.sum(...distribution)));
-    const amounts = stepSizes.map((_s, i) => {
-        if (i === numSamples - 1) {
-            return maxFillAmount;
-        }
-        return maxFillAmount
-            .times(BigNumber.sum(...[0, ...stepSizes.slice(0, i + 1)]))
-            .integerValue(BigNumber.ROUND_UP);
-    });
-    return amounts;
-}
+import {
+    BatchedOperation,
+    LiquidityProviderRegistry,
+    SourcesWithPoolsCache,
+    TokenAdjacencyGraph,
+} from './types';
 
 type BatchedOperationResult<T> = T extends BatchedOperation<infer TResult> ? TResult : never;
+
+export interface DexOrderSamplerOpts {
+    chain: Chain;
+    poolsCaches?: { [key in SourcesWithPoolsCache]: PoolsCache };
+    tokenAdjacencyGraph?: TokenAdjacencyGraph;
+    liquidityProviderRegistry?: LiquidityProviderRegistry,
+    bancorServiceFn?: () => Promise<BancorService | undefined>;
+}
 
 /**
  * Encapsulates interactions with the `ERC20BridgeSampler` contract.
  */
 export class DexOrderSampler extends SamplerOperations {
-    constructor(
-        public readonly chainId: ChainId,
-        _samplerContract: ERC20BridgeSamplerContract,
-        private readonly _samplerOverrides?: SamplerOverrides,
-        poolsCaches?: { [key in ERC20BridgeSource]: PoolsCache },
-        tokenAdjacencyGraph?: TokenAdjacencyGraph,
-        liquidityProviderRegistry?: LiquidityProviderRegistry,
-        bancorServiceFn: () => Promise<BancorService | undefined> = async () => undefined,
-    ) {
-        super(chainId, _samplerContract, poolsCaches, tokenAdjacencyGraph, liquidityProviderRegistry, bancorServiceFn);
+    constructor(opts: DexOrderSamplerOpts) {
+        super({
+            chain: opts.chain,
+            poolsCaches: opts.poolsCaches,
+            tokenAdjacencyGraph: opts.tokenAdjacencyGraph,
+            liquidityProviderRegistry: opts.liquidityProviderRegistry,
+            bancorServiceFn: opts.bancorServiceFn,
+        });
     }
 
     /* Type overloads for `executeAsync()`. Could skip this if we would upgrade TS. */
@@ -143,18 +135,24 @@ export class DexOrderSampler extends SamplerOperations {
      */
     public async executeBatchAsync<T extends Array<BatchedOperation<any>>>(ops: T): Promise<any[]> {
         const callDatas = ops.map(o => o.encodeCall());
-        const { overrides, block } = this._samplerOverrides
-            ? this._samplerOverrides
-            : { overrides: undefined, block: undefined };
 
         // All operations are NOOPs
         if (callDatas.every(cd => cd === NULL_BYTES)) {
             return callDatas.map((_callData, i) => ops[i].handleCallResults(NULL_BYTES));
         }
         // Execute all non-empty calldatas.
-        const rawCallResults = await this._samplerContract
-            .batchCall(callDatas.filter(cd => cd !== NULL_BYTES))
-            .callAsync({ overrides }, block);
+        const rawCallResults = await this._contractHelper.ethCallAsync(
+            this._samplerContract.batchCall,
+            [callDatas.filter(cd => cd !== NULL_BYTES)],
+            {
+                gas: 100e6,
+                overrides: {
+                    [this._samplerContract.address]: {
+                        code: this._samplerContractBytecode,
+                    },
+                },
+            },
+        );
         // Return the parsed results.
         let rawCallResultsIdx = 0;
         return callDatas.map((callData, i) => {

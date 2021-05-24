@@ -77,6 +77,11 @@ export {
 export { artifacts } from './artifacts';
 export { InsufficientAssetLiquidityError } from './errors';
 export { SwapQuoteConsumer } from './quote_consumers/swap_quote_consumer';
+export {
+    DexSample,
+    ERC20BridgeSource,
+    FillData,
+} from './sources/types';
 export { SwapQuoter, Orderbook } from './swap_quoter';
 export {
     AltOffering,
@@ -134,13 +139,10 @@ export {
     CurveFillData,
     CurveFunctionSelectors,
     CurveInfo,
-    DexSample,
     DODOFillData,
-    ERC20BridgeSource,
     ExchangeProxyOverhead,
     FeeSchedule,
     Fill,
-    FillData,
     GetMarketOrdersRfqOpts,
     KyberFillData,
     LiquidityProviderFillData,
@@ -170,7 +172,7 @@ export {
 } from './utils/quote_report_generator';
 export { QuoteRequestor } from './utils/quote_requestor';
 export { ERC20BridgeSamplerContract, BalanceCheckerContract, FakeTakerContract } from './wrappers';
-import { ERC20BridgeSource } from './utils/market_operation_utils/types';
+import { ERC20BridgeSource } from './sources/types';
 export type Native = ERC20BridgeSource.Native;
 export type MultiHop = ERC20BridgeSource.MultiHop;
 

@@ -1,9 +1,10 @@
 import { ContractFunctionObj } from '@0x/base-contract';
 import { BigNumber, decodeBytesAsRevertError, logUtils } from '@0x/utils';
 
+import { ERC20BridgeSource, FillData } from '../../sources/types';
 import { ERC20BridgeSamplerContract } from '../../wrappers';
 
-import { ERC20BridgeSource, FillData, SourceQuoteOperation } from './types';
+import { SourceQuoteOperation, SourceQuoteOperationResult } from './types';
 
 export type Parameters<T> = T extends (...args: infer TArgs) => any ? TArgs : never;
 
@@ -14,7 +15,7 @@ export interface SamplerContractCall<
     contract: ERC20BridgeSamplerContract;
     function: TFunc;
     params: Parameters<TFunc>;
-    callback?: (callResults: string, fillData: TFillData) => BigNumber[];
+    callback?: (callResults: string, fillData: TFillData) => SourceQuoteOperationResult<TFillData>[];
 }
 
 export class SamplerContractOperation<
@@ -26,7 +27,7 @@ export class SamplerContractOperation<
     private readonly _samplerContract: ERC20BridgeSamplerContract;
     private readonly _samplerFunction: TFunc;
     private readonly _params: Parameters<TFunc>;
-    private readonly _callback?: (callResults: string, fillData: TFillData) => BigNumber[];
+    private readonly _callback?: (callResults: string, fillData: TFillData) => SourceQuoteOperationResult<TFillData>[];
 
     constructor(opts: { source: ERC20BridgeSource; fillData?: TFillData } & SamplerContractCall<TFunc, TFillData>) {
         this.source = opts.source;
@@ -42,14 +43,18 @@ export class SamplerContractOperation<
             .bind(this._samplerContract)(...this._params)
             .getABIEncodedTransactionData();
     }
-    public handleCallResults(callResults: string): BigNumber[] {
+    public handleCallResults(callResults: string): SourceQuoteOperationResult<TFillData>[] {
         if (this._callback !== undefined) {
             return this._callback(callResults, this.fillData);
         } else {
-            return this._samplerContract.getABIDecodedReturnData<BigNumber[]>(this._samplerFunction.name, callResults);
+            const outputAmounts = this._samplerContract.getABIDecodedReturnData<BigNumber[]>(this._samplerFunction.name, callResults);
+            return outputAmounts.map(a => ({
+                outputAmount: a,
+                fillData: this.fillData,
+            }));
         }
     }
-    public handleRevert(callResults: string): BigNumber[] {
+    public handleRevert(callResults: string): SourceQuoteOperationResult<TFillData>[] {
         let msg = callResults;
         try {
             msg = decodeBytesAsRevertError(callResults).toString();

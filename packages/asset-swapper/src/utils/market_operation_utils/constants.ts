@@ -3,7 +3,14 @@ import { FillQuoteTransformerOrderType } from '@0x/protocol-utils';
 import { BigNumber } from '@0x/utils';
 import { formatBytes32String } from '@ethersproject/strings';
 
+import {
+    ERC20BridgeSource,
+    FillData,
+} from '../../sources/types';
+import { UNISWAP_V3_GAS_SCHEDULE, UNISWAP_V2_GAS_SCHEDULE, KYBER_GAS_SCHEDULE } from '../../sources/dexes';
+
 import { TokenAdjacencyGraphBuilder } from '../token_adjacency_graph_builder';
+import { valueByChainId } from '../utils';
 
 import { SourceFilters } from './source_filters';
 import {
@@ -12,9 +19,7 @@ import {
     CurveFunctionSelectors,
     CurveInfo,
     DODOFillData,
-    ERC20BridgeSource,
     FeeSchedule,
-    FillData,
     GetMarketOrdersOpts,
     KyberSamplerOpts,
     LiquidityProviderFillData,
@@ -24,7 +29,6 @@ import {
     PsmInfo,
     TokenAdjacencyGraph,
     UniswapV2FillData,
-    UniswapV3FillData,
 } from './types';
 
 // tslint:disable: custom-no-magic-numbers no-bitwise
@@ -40,7 +44,6 @@ export const ONE_HOUR_IN_SECONDS = 60 * 60;
 export const ONE_SECOND_MS = 1000;
 export const NULL_BYTES = '0x';
 export const NULL_ADDRESS = '0x0000000000000000000000000000000000000000';
-export const SAMPLER_ADDRESS = '0x5555555555555555555555555555555555555555';
 export const COMPARISON_PRICE_DECIMALS = 10;
 
 // TODO(kimpers): Consolidate this implementation with the one in @0x/token-metadata
@@ -253,196 +256,6 @@ export const SOURCE_FLAGS: { [key in ERC20BridgeSource]: number } & {
     })),
 );
 
-const MIRROR_WRAPPED_TOKENS = {
-    mAAPL: '0xd36932143f6ebdedd872d5fb0651f4b72fd15a84',
-    mSLV: '0x9d1555d8cb3c846bb4f7d5b1b1080872c3166676',
-    mIAU: '0x1d350417d9787e000cc1b95d70e9536dcd91f373',
-    mAMZN: '0x0cae9e4d663793c2a2a0b211c1cf4bbca2b9caa7',
-    mGOOGL: '0x4b70ccd1cf9905be1faed025eadbd3ab124efe9a',
-    mTSLA: '0x21ca39943e91d704678f5d00b6616650f066fd63',
-    mQQQ: '0x13b02c8de71680e71f0820c996e4be43c2f57d15',
-    mTWTR: '0xedb0414627e6f1e3f082de65cd4f9c693d78cca9',
-    mMSFT: '0x41bbedd7286daab5910a1f15d12cbda839852bd7',
-    mNFLX: '0xc8d674114bac90148d11d3c1d33c61835a0f9dcd',
-    mBABA: '0x676ce85f66adb8d7b8323aeefe17087a3b8cb363',
-    mUSO: '0x31c63146a635eb7465e5853020b39713ac356991',
-    mVIXY: '0xf72fcd9dcf0190923fadd44811e240ef4533fc86',
-    mLUNA: '0xd2877702675e6ceb975b4a1dff9fb7baf4c91ea9',
-};
-
-// Mainnet tokens
-// Not an exhaustive list, just enough so we don't repeat ourselves
-export const MAINNET_TOKENS = {
-    WETH: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-    // Stable Coins
-    DAI: '0x6b175474e89094c44da98b954eedeac495271d0f',
-    USDC: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-    USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
-    sUSD: '0x57ab1ec28d129707052df4df418d58a2d46d5f51',
-    BUSD: '0x4fabb145d64652a948d72533023f6e7a623c7c53',
-    TUSD: '0x0000000000085d4780b73119b644ae5ecd22b376',
-    PAX: '0x8e870d67f660d95d5be530380d0ec0bd388289e1',
-    GUSD: '0x056fd409e1d7a124bd7017459dfea2f387b6d5cd',
-    HUSD: '0xdf574c24545e5ffecb9a659c229253d4111d87e1',
-    mUSD: '0xe2f2a5c287993345a840db3b0845fbc70f5935a5',
-    USDN: '0x674c6ad92fd080e4004b2312b45f796a192d27a0',
-    dUSD: '0x5bc25f649fc4e26069ddf4cf4010f9f706c23831',
-    USDP: '0x1456688345527be1f37e9e627da0837d6f08c925',
-    // Bitcoins
-    WBTC: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599',
-    RenBTC: '0xeb4c2781e4eba804ce9a9803c67d0893436bb27d',
-    sBTC: '0xfe18be6b3bd88a2d2a7f928d00292e7a9963cfc6',
-    tBTC: '0x8daebade922df735c38c80c7ebd708af50815faa',
-    hBTC: '0x0316eb71485b0ab14103307bf65a021042c6d380',
-    pBTC: '0x5228a22e72ccc52d415ecfd199f99d0665e7733b',
-    bBTC: '0x9be89d2a4cd102d8fecc6bf9da793be995c22541',
-    oBTC: '0x8064d9ae6cdf087b1bcd5bdf3531bd5d8c537a68',
-    // aTokens (Aave)
-    aDAI: '0x028171bca77440897b824ca71d1c56cac55b68a3',
-    aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
-    aUSDT: '0x3ed3b47dd13ec9a98b44e6204a523e766b225811',
-    aSUSD: '0x6c5024cd4f8a59110119c56f8933403a539555eb',
-    // Other
-    MKR: '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2',
-    EURS: '0xdb25f211ab05b1c97d595516f45794528a807ad8',
-    sEUR: '0xd71ecff9342a5ced620049e616c5035f1db98620',
-    sETH: '0x5e74c9036fb86bd7ecdcb084a0673efc32ea31cb',
-    stETH: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84',
-    LINK: '0x514910771af9ca656af840dff83e8264ecf986ca',
-    MANA: '0x0f5d2fb29fb7d3cfee444a200298f468908cc942',
-    KNC: '0xdefa4e8a7bcba345f687a2f1456f5edd9ce97202',
-    AAVE: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9',
-    sLINK: '0xbbc455cb4f1b9e4bfc4b73970d360c8f032efee6',
-    yUSD: '0x5dbcf33d8c2e976c6b560249878e6f1491bca25c',
-    ybCRV: '0x2994529c0652d127b7842094103715ec5299bbed',
-    yCRV: '0xdf5e0e81dff6faf3a7e52ba697820c5e32d806a8',
-    bCRV: '0x3b3ac5386837dc563660fb6a0937dfaa5924333b',
-    yDAI: '0xacd43e627e64355f1861cec6d3a6688b31a6f952',
-    yUSDC: '0x597ad1e0c13bfe8025993d9e79c69e1c0233522e',
-    yUSDT: '0x2f08119c6f07c006695e079aafc638b8789faf18',
-    yTUSD: '0x37d19d1c4e1fa9dc47bd1ea12f742a0887eda74a',
-    crETH: '0xcbc1065255cbc3ab41a6868c22d1f1c573ab89fd',
-    ankrETH: '0xe95a203b1a91a908f9b9ce46459d101078c2c3cb',
-    vETH: '0x898bad2774eb97cf6b94605677f43b41871410b1',
-    HT: '0x6f259637dcD74C767781E37Bc6133cd6A68aa161',
-    // Mirror Protocol
-    UST: '0xa47c8bf37f92abed4a126bda807a7b7498661acd',
-    MIR: '0x09a3ecafa817268f77be1283176b946c4ff2e608',
-    ...MIRROR_WRAPPED_TOKENS,
-    // StableSwap "open pools" (crv.finance)
-    STABLEx: '0xcd91538b91b4ba7797d39a2f66e63810b50a33d0',
-    alUSD: '0xbc6da0fe9ad5f3b0d58160288917aa56653660e9',
-    FRAX: '0x853d955acef822db058eb8505911ed77f175b99e',
-    LUSD: '0x5f98805a4e8be255a32880fdec7f6728c6568ba0',
-};
-
-export const BSC_TOKENS = {
-    BUSD: '0xe9e7cea3dedca5984780bafc599bd69add087d56',
-    USDT: '0x55d398326f99059ff775485246999027b3197955',
-    USDC: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
-    DAI: '0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3',
-    PAX: '0xb7f8cd00c5a06c0537e2abff0b58033d02e5e094',
-    UST: '0x23396cf899ca06c4472205fc903bdb4de249d6fc',
-};
-
-export const POLYGON_TOKENS = {
-    DAI: '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063',
-    USDC: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
-    USDT: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-    amDAI: '0x27f8d03b3a2196956ed754badc28d73be8830a6e',
-    amUSDC: '0x1a13f4ca1d028320a707d99520abfefca3998b7f',
-    amUSDT: '0x60d55f02a771d515e077c9c2403a1ef324885cec',
-    WBTC: '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
-    WMATIC: '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
-    WETH: '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619',
-};
-
-export const CURVE_POOLS = {
-    compound: '0xa2b47e3d5c44877cca798226b7b8118f9bfb7a56', // 0.Compound
-    // 1.USDT is dead
-    PAX: '0x06364f10b501e868329afbc005b3492902d6c763', // 2.PAX
-    // 3.y is dead
-    // 3.bUSD is dead
-    sUSD: '0xa5407eae9ba41422680e2e00537571bcc53efbfd', // 5.sUSD
-    renBTC: '0x93054188d876f558f4a66b2ef1d97d16edf0895b', // 6.ren
-    sBTC: '0x7fc77b5c7614e1533320ea6ddc2eb61fa00a9714', // 7.sbtc
-    HBTC: '0x4ca9b3063ec5866a4b82e437059d2c43d1be596f', // 8.hbtc
-    TRI: '0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7', // 9.3pool
-    GUSD: '0x4f062658eaaf2c1ccf8c8e36d6824cdf41167956', // 10.gusd
-    HUSD: '0x3ef6a01a0f81d6046290f3e2a8c5b843e738e604', // 11.husd
-    // 12.usdk is dead
-    USDN: '0x0f9cb53ebe405d49a0bbdbd291a65ff571bc83e1', // 13.usdn
-    // 14.linkusd is dead
-    mUSD: '0x8474ddbe98f5aa3179b3b3f5942d724afcdec9f6', // 15.musd
-    // 16.rsv is dead
-    dUSD: '0x8038c01a0390a8c547446a0b2c18fc9aefecc10c', // 17.dusd
-    tBTC: '0xc25099792e9349c7dd09759744ea681c7de2cb66', // 18.tbtc
-    pBTC: '0x7f55dde206dbad629c080068923b36fe9d6bdbef', // 19.pbtc
-    bBTC: '0x071c661b4deefb59e2a3ddb20db036821eee8f4b', // 20.bbtc
-    oBTC: '0xd81da8d904b52208541bade1bd6595d8a251f8dd', // 21.obtc
-    UST: '0x890f4e345b1daed0367a877a1612f86a1f86985f', // 22.ust
-    eurs: '0x0ce6a5ff5217e38315f87032cf90686c96627caa', // 23.eurs
-    seth: '0xc5424b857f758e906013f3555dad202e4bdb4567', // 24.seth
-    aave: '0xdebf20617708857ebe4f679508e7b7863a8a8eee', // 25.aave
-    steth: '0xdc24316b9ae028f1497c275eb9192a3ea0f67022', // 26.stETH
-    saave: '0xeb16ae0052ed37f479f7fe63849198df1765a733', // saave
-    ankreth: '0xa96a65c051bf88b4095ee1f2451c2a9d43f53ae2', // ankreth
-    USDP: '0x42d7025938bec20b69cbae5a77421082407f053a', // usdp
-    ib: '0x2dded6da1bf5dbdf597c45fcfaa3194e53ecfeaf', // iron bank
-    link: '0xf178c0b5bb7e7abf4e12a4838c7b7c5ba2c623c0', // link
-    // StableSwap "open pools" (crv.finance)
-    TUSD: '0xecd5e75afb02efa118af914515d6521aabd189f1',
-    STABLEx: '0x3252efd4ea2d6c78091a1f43982ee2c3659cc3d1',
-    alUSD: '0x43b4fdfd4ff969587185cdb6f0bd875c5fc83f8c',
-    FRAX: '0xd632f22692fac7611d2aa1c0d552930d43caed3b',
-    LUSD: '0xed279fdd11ca84beef15af5d39bb4d4bee23f0ca',
-    BUSD: '0x4807862aa8b2bf68830e4c8dc86d0e9a998e085a',
-};
-
-export const CURVE_POLYGON_POOLS = {
-    aave: '0x445fe580ef8d70ff569ab36e80c647af338db351',
-};
-
-export const SWERVE_POOLS = {
-    y: '0x329239599afb305da0a2ec69c58f8a6697f9f88d',
-};
-
-export const SNOWSWAP_POOLS = {
-    yUSD: '0xbf7ccd6c446acfcc5df023043f2167b62e81899b',
-    yVault: '0x4571753311e37ddb44faa8fb78a6df9a6e3c6c0b',
-    // POOL Disabled as it uses WETH over ETH
-    // There is a conflict with Curve and SnowSwap
-    // where Curve uses ETH and SnowSwap uses WETH
-    // To re-enable this we need to flag an WETH
-    // unwrap or not
-    // eth: '0x16bea2e63adade5984298d53a4d4d9c09e278192',
-};
-
-export const SMOOTHY_POOLS = {
-    syUSD: '0xe5859f4efc09027a9b718781dcb2c6910cac6e91',
-};
-
-export const SADDLE_POOLS = {
-    stables: '0x3911f80530595fbd01ab1516ab61255d75aeb066',
-    bitcoins: '0x4f6a43ad7cba042606decaca730d4ce0a57ac62e',
-};
-
-export const NERVE_POOLS = {
-    threePool: '0x1b3771a66ee31180906972580ade9b81afc5fcdc',
-};
-
-export const BELT_POOLS = {
-    vPool: '0xf16d312d119c13dd27fd0dc814b0bcdcaaa62dfd',
-};
-
-export const ELLIPSIS_POOLS = {
-    threePool: '0x160caed03795365f3a589f10c379ffa7d75d4e76',
-};
-
-export const XSIGMA_POOLS = {
-    stable: '0x3333333ACdEdBbC9Ad7bda0876e60714195681c5',
-};
-
 export const DEFAULT_INTERMEDIATE_TOKENS_BY_CHAIN_ID = valueByChainId<string[]>(
     {
         [ChainId.Mainnet]: [
@@ -520,366 +333,11 @@ export const NATIVE_FEE_TOKEN_AMOUNT_BY_CHAIN_ID = valueByChainId(
     ONE_ETHER,
 );
 
-// Order dependent
-const CURVE_TRI_POOL_MAINNET_TOKENS = [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT];
-const CURVE_TRI_BTC_POOL_TOKEN = [MAINNET_TOKENS.RenBTC, MAINNET_TOKENS.WBTC, MAINNET_TOKENS.sBTC];
-
-const createCurveExchangePool = (info: { tokens: string[]; pool: string; gasSchedule: number }) => ({
-    exchangeFunctionSelector: CurveFunctionSelectors.exchange,
-    sellQuoteFunctionSelector: CurveFunctionSelectors.get_dy,
-    buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-    tokens: info.tokens,
-    metaToken: undefined,
-    poolAddress: info.pool,
-    gasSchedule: info.gasSchedule,
-});
-
-const createCurveExchangeUnderlyingPool = (info: { tokens: string[]; pool: string; gasSchedule: number }) => ({
-    exchangeFunctionSelector: CurveFunctionSelectors.exchange_underlying,
-    sellQuoteFunctionSelector: CurveFunctionSelectors.get_dy_underlying,
-    buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-    tokens: info.tokens,
-    metaToken: undefined,
-    poolAddress: info.pool,
-    gasSchedule: info.gasSchedule,
-});
-
-const createCurveMetaTriPool = (info: { token: string; pool: string; gasSchedule: number }) => ({
-    exchangeFunctionSelector: CurveFunctionSelectors.exchange_underlying,
-    sellQuoteFunctionSelector: CurveFunctionSelectors.get_dy_underlying,
-    buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-    tokens: [info.token, ...CURVE_TRI_POOL_MAINNET_TOKENS],
-    metaToken: info.token,
-    poolAddress: info.pool,
-    gasSchedule: info.gasSchedule,
-});
-
-const createCurveMetaTriBtcPool = (info: { token: string; pool: string; gasSchedule: number }) => ({
-    exchangeFunctionSelector: CurveFunctionSelectors.exchange_underlying,
-    sellQuoteFunctionSelector: CurveFunctionSelectors.get_dy_underlying,
-    buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-    tokens: [info.token, ...CURVE_TRI_BTC_POOL_TOKEN],
-    metaToken: info.token,
-    poolAddress: info.pool,
-    gasSchedule: info.gasSchedule,
-});
-
 /**
  * Mainnet Curve configuration
  * The tokens are in order of their index, which each curve defines
  * I.e DaiUsdc curve has DAI as index 0 and USDC as index 1
  */
-export const CURVE_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [CURVE_POOLS.compound]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC],
-        pool: CURVE_POOLS.compound,
-        gasSchedule: 587e3,
-    }),
-    [CURVE_POOLS.PAX]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT, MAINNET_TOKENS.PAX],
-        pool: CURVE_POOLS.PAX,
-        gasSchedule: 742e3,
-    }),
-    [CURVE_POOLS.sUSD]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT, MAINNET_TOKENS.sUSD],
-        pool: CURVE_POOLS.sUSD,
-        gasSchedule: 302e3,
-    }),
-    [CURVE_POOLS.renBTC]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.RenBTC, MAINNET_TOKENS.WBTC],
-        pool: CURVE_POOLS.renBTC,
-        gasSchedule: 171e3,
-    }),
-    [CURVE_POOLS.sBTC]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.RenBTC, MAINNET_TOKENS.WBTC, MAINNET_TOKENS.sBTC],
-        pool: CURVE_POOLS.sBTC,
-        gasSchedule: 327e3,
-    }),
-    [CURVE_POOLS.HBTC]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.hBTC, MAINNET_TOKENS.WBTC],
-        pool: CURVE_POOLS.HBTC,
-        gasSchedule: 210e3,
-    }),
-    [CURVE_POOLS.TRI]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT],
-        pool: CURVE_POOLS.TRI,
-        gasSchedule: 176e3,
-    }),
-    [CURVE_POOLS.GUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.GUSD,
-        pool: CURVE_POOLS.GUSD,
-        gasSchedule: 411e3,
-    }),
-    [CURVE_POOLS.HUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.HUSD,
-        pool: CURVE_POOLS.HUSD,
-        gasSchedule: 396e3,
-    }),
-    [CURVE_POOLS.USDN]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.USDN,
-        pool: CURVE_POOLS.USDN,
-        gasSchedule: 398e3,
-    }),
-    [CURVE_POOLS.mUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.mUSD,
-        pool: CURVE_POOLS.mUSD,
-        gasSchedule: 385e3,
-    }),
-    [CURVE_POOLS.dUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.dUSD,
-        pool: CURVE_POOLS.dUSD,
-        gasSchedule: 371e3,
-    }),
-    [CURVE_POOLS.tBTC]: createCurveMetaTriBtcPool({
-        token: MAINNET_TOKENS.tBTC,
-        pool: CURVE_POOLS.tBTC,
-        gasSchedule: 482e3,
-    }),
-    [CURVE_POOLS.pBTC]: createCurveMetaTriBtcPool({
-        token: MAINNET_TOKENS.pBTC,
-        pool: CURVE_POOLS.pBTC,
-        gasSchedule: 503e3,
-    }),
-    [CURVE_POOLS.bBTC]: createCurveMetaTriBtcPool({
-        token: MAINNET_TOKENS.bBTC,
-        pool: CURVE_POOLS.bBTC,
-        gasSchedule: 497e3,
-    }),
-    [CURVE_POOLS.oBTC]: createCurveMetaTriBtcPool({
-        token: MAINNET_TOKENS.oBTC,
-        pool: CURVE_POOLS.oBTC,
-        gasSchedule: 488e3,
-    }),
-    [CURVE_POOLS.UST]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.UST,
-        pool: CURVE_POOLS.UST,
-        gasSchedule: 340e3,
-    }),
-    [CURVE_POOLS.eurs]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.EURS, MAINNET_TOKENS.sEUR],
-        pool: CURVE_POOLS.eurs,
-        gasSchedule: 320e3,
-    }),
-    [CURVE_POOLS.aave]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT],
-        pool: CURVE_POOLS.aave,
-        gasSchedule: 580e3,
-    }),
-    [CURVE_POOLS.aave]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.aDAI, MAINNET_TOKENS.aUSDC, MAINNET_TOKENS.aUSDT],
-        pool: CURVE_POOLS.aave,
-        gasSchedule: 580e3,
-    }),
-    [CURVE_POOLS.saave]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.sUSD],
-        pool: CURVE_POOLS.saave,
-        gasSchedule: 580e3,
-    }),
-    [CURVE_POOLS.saave]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.aDAI, MAINNET_TOKENS.aSUSD],
-        pool: CURVE_POOLS.saave,
-        gasSchedule: 580e3,
-    }),
-    [CURVE_POOLS.USDP]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.USDP,
-        pool: CURVE_POOLS.USDP,
-        gasSchedule: 374e3,
-    }),
-    [CURVE_POOLS.ib]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT],
-        pool: CURVE_POOLS.ib,
-        gasSchedule: 646e3,
-    }),
-    [CURVE_POOLS.link]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.LINK, MAINNET_TOKENS.sLINK],
-        pool: CURVE_POOLS.link,
-        gasSchedule: 319e3,
-    }),
-    [CURVE_POOLS.TUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.TUSD,
-        pool: CURVE_POOLS.TUSD,
-        gasSchedule: 404e3,
-    }),
-    [CURVE_POOLS.STABLEx]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.STABLEx,
-        pool: CURVE_POOLS.STABLEx,
-        gasSchedule: 397e3,
-    }),
-    [CURVE_POOLS.alUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.alUSD,
-        pool: CURVE_POOLS.alUSD,
-        gasSchedule: 387e3,
-    }),
-    [CURVE_POOLS.FRAX]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.FRAX,
-        pool: CURVE_POOLS.FRAX,
-        gasSchedule: 387e3,
-    }),
-    [CURVE_POOLS.LUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.LUSD,
-        pool: CURVE_POOLS.LUSD,
-        gasSchedule: 387e3,
-    }),
-    [CURVE_POOLS.BUSD]: createCurveMetaTriPool({
-        token: MAINNET_TOKENS.BUSD,
-        pool: CURVE_POOLS.BUSD,
-        gasSchedule: 387e3,
-    }),
-    [CURVE_POOLS.steth]: createCurveExchangePool({
-        // This pool uses ETH
-        tokens: [MAINNET_TOKENS.WETH, MAINNET_TOKENS.stETH],
-        pool: CURVE_POOLS.steth,
-        gasSchedule: 151e3,
-    }),
-    [CURVE_POOLS.seth]: createCurveExchangePool({
-        // This pool uses ETH
-        tokens: [MAINNET_TOKENS.WETH, MAINNET_TOKENS.sETH],
-        pool: CURVE_POOLS.seth,
-        gasSchedule: 187e3,
-    }),
-    [CURVE_POOLS.ankreth]: createCurveExchangePool({
-        // This pool uses ETH
-        tokens: [MAINNET_TOKENS.WETH, MAINNET_TOKENS.ankrETH],
-        pool: CURVE_POOLS.ankreth,
-        gasSchedule: 125e3,
-    }),
-};
-
-export const CURVE_POLYGON_INFOS: { [name: string]: CurveInfo } = {
-    ['aave_exchangeunderlying']: createCurveExchangeUnderlyingPool({
-        tokens: [POLYGON_TOKENS.DAI, POLYGON_TOKENS.USDC, POLYGON_TOKENS.USDT],
-        pool: CURVE_POLYGON_POOLS.aave,
-        gasSchedule: 300e3,
-    }),
-    ['aave_exchange']: createCurveExchangePool({
-        tokens: [POLYGON_TOKENS.amDAI, POLYGON_TOKENS.amUSDC, POLYGON_TOKENS.amUSDT],
-        pool: CURVE_POLYGON_POOLS.aave,
-        gasSchedule: 150e3,
-    }),
-};
-
-export const SWERVE_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [SWERVE_POOLS.y]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT, MAINNET_TOKENS.TUSD],
-        pool: SWERVE_POOLS.y,
-        gasSchedule: 140e3,
-    }),
-};
-
-export const SNOWSWAP_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [SNOWSWAP_POOLS.yUSD]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.yUSD, MAINNET_TOKENS.ybCRV],
-        pool: SNOWSWAP_POOLS.yUSD,
-        gasSchedule: 990e3,
-    }),
-    [SNOWSWAP_POOLS.yUSD]: createCurveExchangeUnderlyingPool({
-        tokens: [MAINNET_TOKENS.yCRV, MAINNET_TOKENS.bCRV],
-        pool: SNOWSWAP_POOLS.yUSD,
-        gasSchedule: 990e3,
-    }),
-    [SNOWSWAP_POOLS.yVault]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.yDAI, MAINNET_TOKENS.yUSDC, MAINNET_TOKENS.yUSDT, MAINNET_TOKENS.yTUSD],
-        pool: SNOWSWAP_POOLS.yVault,
-        gasSchedule: 1490e3,
-    }),
-    // Unsupported due to collision with WETH and ETH with execution using MixinCurve
-    // [SNOWSWAP_POOLS.eth]: createCurveExchangePool({
-    //     tokens: [MAINNET_TOKENS.WETH, MAINNET_TOKENS.vETH, MAINNET_TOKENS.ankrETH, MAINNET_TOKENS.crETH],
-    //     pool: SNOWSWAP_POOLS.eth,
-    //     gasSchedule: 990e3,
-    // }),
-};
-
-export const BELT_BSC_INFOS: { [name: string]: CurveInfo } = {
-    [BELT_POOLS.vPool]: createCurveExchangeUnderlyingPool({
-        tokens: [BSC_TOKENS.DAI, BSC_TOKENS.USDC, BSC_TOKENS.USDT, BSC_TOKENS.BUSD],
-        pool: BELT_POOLS.vPool,
-        gasSchedule: 4490e3,
-    }),
-};
-
-export const ELLIPSIS_BSC_INFOS: { [name: string]: CurveInfo } = {
-    [ELLIPSIS_POOLS.threePool]: createCurveExchangePool({
-        tokens: [BSC_TOKENS.BUSD, BSC_TOKENS.USDC, BSC_TOKENS.USDT],
-        pool: ELLIPSIS_POOLS.threePool,
-        gasSchedule: 140e3,
-    }),
-};
-
-export const XSIGMA_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [XSIGMA_POOLS.stable]: createCurveExchangePool({
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT],
-        pool: XSIGMA_POOLS.stable,
-        gasSchedule: 150e3,
-    }),
-};
-
-// Curve pools like using custom selectors
-export const SADDLE_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [SADDLE_POOLS.stables]: {
-        exchangeFunctionSelector: CurveFunctionSelectors.swap,
-        sellQuoteFunctionSelector: CurveFunctionSelectors.calculateSwap,
-        buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-        poolAddress: SADDLE_POOLS.stables,
-        tokens: [MAINNET_TOKENS.DAI, MAINNET_TOKENS.USDC, MAINNET_TOKENS.USDT],
-        metaToken: undefined,
-        gasSchedule: 150e3,
-    },
-    [SADDLE_POOLS.bitcoins]: {
-        exchangeFunctionSelector: CurveFunctionSelectors.swap,
-        sellQuoteFunctionSelector: CurveFunctionSelectors.calculateSwap,
-        buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-        poolAddress: SADDLE_POOLS.bitcoins,
-        tokens: [MAINNET_TOKENS.tBTC, MAINNET_TOKENS.WBTC, MAINNET_TOKENS.RenBTC, MAINNET_TOKENS.sBTC],
-        metaToken: undefined,
-        gasSchedule: 150e3,
-    },
-};
-
-export const SMOOTHY_MAINNET_INFOS: { [name: string]: CurveInfo } = {
-    [SMOOTHY_POOLS.syUSD]: {
-        exchangeFunctionSelector: CurveFunctionSelectors.swap_uint256,
-        sellQuoteFunctionSelector: CurveFunctionSelectors.get_swap_amount,
-        buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-        poolAddress: SMOOTHY_POOLS.syUSD,
-        tokens: [
-            MAINNET_TOKENS.USDT,
-            MAINNET_TOKENS.USDC,
-            MAINNET_TOKENS.DAI,
-            MAINNET_TOKENS.TUSD,
-            MAINNET_TOKENS.sUSD,
-            MAINNET_TOKENS.BUSD,
-            MAINNET_TOKENS.PAX,
-            MAINNET_TOKENS.GUSD,
-        ],
-        metaToken: undefined,
-        gasSchedule: 190e3,
-    },
-};
-
-export const SMOOTHY_BSC_INFOS: { [name: string]: CurveInfo } = {
-    [SMOOTHY_POOLS.syUSD]: {
-        exchangeFunctionSelector: CurveFunctionSelectors.swap_uint256,
-        sellQuoteFunctionSelector: CurveFunctionSelectors.get_swap_amount,
-        buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-        poolAddress: SMOOTHY_POOLS.syUSD,
-        tokens: [BSC_TOKENS.BUSD, BSC_TOKENS.USDT, BSC_TOKENS.USDC, BSC_TOKENS.DAI, BSC_TOKENS.PAX, BSC_TOKENS.UST],
-        metaToken: undefined,
-        gasSchedule: 90e3,
-    },
-};
-
-export const NERVE_BSC_INFOS: { [name: string]: CurveInfo } = {
-    [NERVE_POOLS.threePool]: {
-        exchangeFunctionSelector: CurveFunctionSelectors.swap,
-        sellQuoteFunctionSelector: CurveFunctionSelectors.calculateSwap,
-        buyQuoteFunctionSelector: CurveFunctionSelectors.None,
-        poolAddress: NERVE_POOLS.threePool,
-        tokens: [BSC_TOKENS.BUSD, BSC_TOKENS.USDT, BSC_TOKENS.USDC],
-        metaToken: undefined,
-        gasSchedule: 140e3,
-    },
-};
 
 /**
  * Kyber reserve prefixes
@@ -887,92 +345,7 @@ export const NERVE_BSC_INFOS: { [name: string]: CurveInfo } = {
  * 0xaa Automated price reserve
  * 0xbb Bridged price reserve (i.e Uniswap/Curve)
  */
-export const KYBER_BRIDGED_LIQUIDITY_PREFIX = '0xbb';
-export const KYBER_BANNED_RESERVES = ['0xff4f6e65426974205175616e7400000000000000000000000000000000000000'];
-export const MAX_KYBER_RESERVES_QUERIED = 5;
-export const KYBER_CONFIG_BY_CHAIN_ID = valueByChainId<KyberSamplerOpts>(
-    {
-        [ChainId.Mainnet]: {
-            networkProxy: '0x9aab3f75489902f3a48495025729a0af77d4b11e',
-            hintHandler: '0xa1C0Fa73c39CFBcC11ec9Eb1Afc665aba9996E2C',
-            weth: MAINNET_TOKENS.WETH,
-        },
-        [ChainId.Ropsten]: {
-            networkProxy: '0x818e6fecd516ecc3849daf6845e3ec868087b755',
-            hintHandler: '0x63f773c026093eef988e803bdd5772dd235a8e71',
-            weth: getContractAddressesForChainOrThrow(ChainId.Ropsten).etherToken,
-        },
-    },
-    {
-        networkProxy: NULL_ADDRESS,
-        hintHandler: NULL_ADDRESS,
-        weth: NULL_ADDRESS,
-    },
-);
 
-export const LIQUIDITY_PROVIDER_REGISTRY_BY_CHAIN_ID = valueByChainId<LiquidityProviderRegistry>(
-    {
-        [ChainId.Mainnet]: {
-            ['0x1d0d407c5af8c86f0a6494de86e56ae21e46a951']: {
-                tokens: [
-                    MAINNET_TOKENS.WETH,
-                    MAINNET_TOKENS.USDC,
-                    MAINNET_TOKENS.USDT,
-                    MAINNET_TOKENS.WBTC,
-                    MAINNET_TOKENS.PAX,
-                    MAINNET_TOKENS.LINK,
-                    MAINNET_TOKENS.KNC,
-                    MAINNET_TOKENS.MANA,
-                    MAINNET_TOKENS.DAI,
-                    MAINNET_TOKENS.BUSD,
-                    MAINNET_TOKENS.AAVE,
-                    MAINNET_TOKENS.HT,
-                ],
-                gasCost: (takerToken: string, makerToken: string) =>
-                    [takerToken, makerToken].includes(MAINNET_TOKENS.WETH) ? 160e3 : 280e3,
-            },
-        },
-    },
-    {},
-);
-
-export const UNISWAPV1_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0xc0a47dfe034b400b47bdad5fecda2621de6c4d95',
-        [ChainId.Ropsten]: '0x9c83dce8ca20e9aaf9d3efc003b2ea62abc08351',
-    },
-    NULL_ADDRESS,
-);
-
-export const UNISWAPV2_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0xf164fc0ec4e93095b804a4795bbe1e041497b92a',
-        [ChainId.Ropsten]: '0xf164fc0ec4e93095b804a4795bbe1e041497b92a',
-    },
-    NULL_ADDRESS,
-);
-
-export const SUSHISWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f',
-        [ChainId.BSC]: '0x1b02da8cb0d097eb8d57a175b88c7d8b47997506',
-        [ChainId.Ropsten]: '0x1b02da8cb0d097eb8d57a175b88c7d8b47997506',
-        [ChainId.Polygon]: '0x1b02da8cb0d097eb8d57a175b88c7d8b47997506',
-    },
-    NULL_ADDRESS,
-);
-
-export const CRYPTO_COM_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0xceb90e4c17d626be0facd78b79c9c87d7ca181b3',
-    },
-    NULL_ADDRESS,
-);
-
-export const LINKSWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    { [ChainId.Mainnet]: '0xa7ece0911fe8c60bff9e99f8fafcdbe56e07aff1' },
-    NULL_ADDRESS,
-);
 
 export const MSTABLE_POOLS_BY_CHAIN_ID = valueByChainId(
     {
@@ -1007,20 +380,6 @@ export const MSTABLE_POOLS_BY_CHAIN_ID = valueByChainId(
             tokens: [] as string[],
         },
     },
-);
-
-export const OASIS_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0x5e3e0548935a83ad29fb2a9153d331dc6d49020f',
-    },
-    NULL_ADDRESS,
-);
-
-export const KYBER_DMM_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0x1c87257f5e8609940bc751a07bb085bb7f8cdbe6',
-    },
-    NULL_ADDRESS,
 );
 
 export const MOONISWAP_REGISTRIES_BY_CHAIN_ID = valueByChainId(
@@ -1074,14 +433,6 @@ export const DODOV2_FACTORIES_BY_CHAIN_ID = valueByChainId<string[]>(
     [] as string[],
 );
 export const MAX_DODOV2_POOLS_QUERIED = 3;
-
-export const CURVE_LIQUIDITY_PROVIDER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Mainnet]: '0x561b94454b65614ae3db0897b74303f4acf7cc75',
-        [ChainId.Ropsten]: '0xae241c6fc7f28f6dc0cb58b4112ba7f63fcaf5e2',
-    },
-    NULL_ADDRESS,
-);
 
 export const MAKER_PSM_INFO_BY_CHAIN_ID = valueByChainId<PsmInfo>(
     {
@@ -1176,95 +527,13 @@ export const BALANCER_TOP_POOLS_FETCHED = 250;
 export const BALANCER_MAX_POOLS_FETCHED = 3;
 export const BALANCER_V2_SUBGRAPH_URL = 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2';
 
-export const UNISWAPV3_CONFIG_BY_CHAIN_ID = valueByChainId(
-    {
-        [ChainId.Mainnet]: {
-            quoter: '0xb27308f9f90d607463bb33ea1bebb41c27ce5ab6',
-            router: '0xe592427a0aece92de3edee1f18e0157c05861564',
-        },
-        [ChainId.Ropsten]: {
-            quoter: '0x2f9e608fd881861b8916257b76613cb22ee0652c',
-            router: '0x03782388516e94fcd4c18666303601a12aa729ea',
-        },
-    },
-    { quoter: NULL_ADDRESS, router: NULL_ADDRESS },
-);
-
 //
 // BSC
 //
-export const PANCAKESWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0x05ff2b0db69458a0750badebc4f9e13add608c7f',
-    },
-    NULL_ADDRESS,
-);
-
-export const PANCAKESWAPV2_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0x10ed43c718714eb63d5aa57b78b54704e256024e',
-    },
-    NULL_ADDRESS,
-);
-
-export const BAKERYSWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0xcde540d7eafe93ac5fe6233bee57e1270d3e330f',
-    },
-    NULL_ADDRESS,
-);
-
-export const APESWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0xc0788a3ad43d79aa53b09c2eacc313a787d1d607',
-    },
-    NULL_ADDRESS,
-);
-
-export const CAFESWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0x933daea3a5995fb94b14a7696a5f3ffd7b1e385a',
-    },
-    NULL_ADDRESS,
-);
-
-export const CHEESESWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0x3047799262d8d2ef41ed2a222205968bc9b0d895',
-    },
-    NULL_ADDRESS,
-);
-
-export const JULSWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.BSC]: '0xbd67d157502a23309db761c41965600c2ec788b2',
-    },
-    NULL_ADDRESS,
-);
 
 //
 // Polygon
 //
-export const QUICKSWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Polygon]: '0xa5e0829caced8ffdd4de3c43696c57f7d7a678ff',
-    },
-    NULL_ADDRESS,
-);
-
-export const COMETHSWAP_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Polygon]: '0x93bcdc45f7e62f89a8e901dc4a0e2c6c427d9f25',
-    },
-    NULL_ADDRESS,
-);
-
-export const DFYN_ROUTER_BY_CHAIN_ID = valueByChainId<string>(
-    {
-        [ChainId.Polygon]: '0xa102072a4c07f06ec3b4900fdc4c7b80b6c57429',
-    },
-    NULL_ADDRESS,
-);
 
 const uniswapV2CloneGasSchedule = (fillData?: FillData) => {
     // TODO: Different base cost if to/from ETH.
@@ -1298,7 +567,7 @@ export const DEFAULT_GAS_SCHEDULE: Required<FeeSchedule> = {
         return (fillData as LiquidityProviderFillData).gasCost || 100e3;
     },
     [ERC20BridgeSource.Eth2Dai]: () => 400e3,
-    [ERC20BridgeSource.Kyber]: () => 450e3,
+    [ERC20BridgeSource.Kyber]: KYBER_GAS_SCHEDULE,
     [ERC20BridgeSource.Curve]: fillData => (fillData as CurveFillData).pool.gasSchedule,
     [ERC20BridgeSource.Swerve]: fillData => (fillData as CurveFillData).pool.gasSchedule,
     [ERC20BridgeSource.SnowSwap]: fillData => (fillData as CurveFillData).pool.gasSchedule,

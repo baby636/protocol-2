@@ -2,14 +2,13 @@ import { ChainId, getContractAddressesForChainOrThrow } from '@0x/contract-addre
 import { FillQuoteTransformerOrderType, LimitOrder } from '@0x/protocol-utils';
 import { BigNumber, providerUtils } from '@0x/utils';
 import Axios, { AxiosInstance } from 'axios';
-import { BlockParamLiteral, MethodAbi, SupportedProvider, ZeroExProvider } from 'ethereum-types';
-import { FastABI } from 'fast-abi';
+import { SupportedProvider } from 'ethereum-types';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
 import * as _ from 'lodash';
 
-import { artifacts } from './artifacts';
 import { constants, INVALID_SIGNATURE, KEEP_ALIVE_TTL } from './constants';
+import { ERC20BridgeSource, FillData } from './sources/types';
 import {
     AssetSwapperContractAddresses,
     MarketBuySwapQuote,
@@ -25,15 +24,14 @@ import {
     SwapQuoterRfqOpts,
 } from './types';
 import { assert } from './utils/assert';
+import { Chain } from './utils/chain';
 import { MarketOperationUtils } from './utils/market_operation_utils';
 import { BancorService } from './utils/market_operation_utils/bancor_service';
-import { SAMPLER_ADDRESS, SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
+import { SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
 import { DexOrderSampler } from './utils/market_operation_utils/sampler';
 import { SourceFilters } from './utils/market_operation_utils/source_filters';
 import {
-    ERC20BridgeSource,
     FeeSchedule,
-    FillData,
     GetMarketOrdersOpts,
     MarketDepth,
     MarketDepthSide,
@@ -44,7 +42,6 @@ import {
 import { ProtocolFeeUtils } from './utils/protocol_fee_utils';
 import { QuoteRequestor } from './utils/quote_requestor';
 import { QuoteFillResult, simulateBestCaseFill, simulateWorstCaseFill } from './utils/quote_simulation';
-import { ERC20BridgeSamplerContract } from './wrappers';
 
 export abstract class Orderbook {
     public abstract getOrdersAsync(
@@ -65,7 +62,6 @@ export abstract class Orderbook {
 
 // tslint:disable:max-classes-per-file
 export class SwapQuoter {
-    public readonly provider: ZeroExProvider;
     public readonly orderbook: Orderbook;
     public readonly expiryBufferMs: number;
     public readonly chainId: number;
@@ -84,22 +80,24 @@ export class SwapQuoter {
      *
      * @return  An instance of SwapQuoter
      */
-    constructor(supportedProvider: SupportedProvider, orderbook: Orderbook, options: Partial<SwapQuoterOpts> = {}) {
+    public static async createAsync(supportedProvider: SupportedProvider, orderbook: Orderbook, options: Partial<SwapQuoterOpts> = {}): Promise<SwapQuoter> {
+        const chain = await Chain.createAsync({ provider: providerUtils.standardizeOrThrow(supportedProvider) });
+        return new SwapQuoter(chain, orderbook, options);
+    }
+
+    protected constructor(chain: Chain, orderbook: Orderbook, options: Partial<SwapQuoterOpts> = {}) {
         const {
             chainId,
             expiryBufferMs,
             permittedOrderFeeTypes,
-            samplerGasLimit,
             rfqt,
             tokenAdjacencyGraph,
             liquidityProviderRegistry,
         } = { ...constants.DEFAULT_SWAP_QUOTER_OPTS, ...options };
-        const provider = providerUtils.standardizeOrThrow(supportedProvider);
         assert.isValidOrderbook('orderbook', orderbook);
         assert.isNumber('chainId', chainId);
         assert.isNumber('expiryBufferMs', expiryBufferMs);
         this.chainId = chainId;
-        this.provider = provider;
         this.orderbook = orderbook;
         this.expiryBufferMs = expiryBufferMs;
         this.permittedOrderFeeTypes = permittedOrderFeeTypes;
@@ -112,46 +110,16 @@ export class SwapQuoter {
             constants.PROTOCOL_FEE_UTILS_POLLING_INTERVAL_IN_MS,
             options.ethGasStationUrl,
         );
-        // Allow the sampler bytecode to be overwritten using geths override functionality
-        const samplerBytecode = _.get(artifacts.ERC20BridgeSampler, 'compilerOutput.evm.deployedBytecode.object');
-        // Allow address of the Sampler to be overridden, i.e in Ganache where overrides do not work
-        const samplerAddress = (options.samplerOverrides && options.samplerOverrides.to) || SAMPLER_ADDRESS;
-        const defaultCodeOverrides = samplerBytecode
-            ? {
-                  [samplerAddress]: { code: samplerBytecode },
-              }
-            : {};
-        const samplerOverrides = _.assign(
-            { block: BlockParamLiteral.Latest, overrides: defaultCodeOverrides },
-            options.samplerOverrides,
-        );
-        const fastAbi = new FastABI(ERC20BridgeSamplerContract.ABI() as MethodAbi[], { BigNumber });
-        const samplerContract = new ERC20BridgeSamplerContract(
-            samplerAddress,
-            this.provider,
-            {
-                gas: samplerGasLimit,
-            },
-            {},
-            undefined,
-            {
-                encodeInput: (fnName: string, values: any) => fastAbi.encodeInput(fnName, values),
-                decodeOutput: (fnName: string, data: string) => fastAbi.decodeOutput(fnName, data),
-            },
-        );
-
         this._marketOperationUtils = new MarketOperationUtils(
-            new DexOrderSampler(
-                this.chainId,
-                samplerContract,
-                samplerOverrides,
-                undefined, // pools caches for balancer and cream
+            new DexOrderSampler({
+                chain,
+                poolsCaches: undefined, // pools caches for balancer and cream
                 tokenAdjacencyGraph,
                 liquidityProviderRegistry,
-                this.chainId === ChainId.Mainnet // Enable Bancor only on Mainnet
-                    ? async () => BancorService.createAsync(provider)
+                bancorServiceFn: this.chainId === ChainId.Mainnet // Enable Bancor only on Mainnet
+                    ? async () => BancorService.createAsync(chain.provider)
                     : async () => undefined,
-            ),
+            }),
             this._contractAddresses,
             {
                 chainId,

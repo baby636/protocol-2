@@ -12,8 +12,8 @@ import { Fee } from '@0x/quote-server/lib/src/types';
 import { BigNumber } from '@0x/utils';
 import { AxiosRequestConfig } from 'axios';
 
+import { ERC20BridgeSource } from './sources/types';
 import {
-    ERC20BridgeSource,
     GetMarketOrdersOpts,
     LiquidityProviderRegistry,
     OptimizedMarketOrder,
@@ -450,3 +450,6 @@ export interface AltFirmQuoteResponse extends AltBaseRfqResponse {
     };
     status: 'active' | 'rejected';
 }
+
+export type Bytes = string;
+export type Address = Bytes;

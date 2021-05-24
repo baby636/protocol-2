@@ -8,11 +8,13 @@ import { MarketOperation } from '@0x/types';
 import { BigNumber } from '@0x/utils';
 
 import { NativeOrderWithFillableAmounts, RfqFirmQuoteValidator, RfqRequestOpts } from '../../types';
+import { ERC20BridgeSource, DexSample, FillData } from '../../sources/types';
 import { QuoteRequestor } from '../../utils/quote_requestor';
 import { PriceComparisonsReport, QuoteReport } from '../quote_report_generator';
 
 import { CollapsedPath } from './path';
 import { SourceFilters } from './source_filters';
+import { PoolsCache } from './pools_cache';
 
 /**
  * Order domain keys: chainId and exchange
@@ -30,57 +32,6 @@ export enum AggregationError {
     EmptyOrders = 'EMPTY_ORDERS',
     NotERC20AssetData = 'NOT_ERC20ASSET_DATA',
     NoBridgeForSource = 'NO_BRIDGE_FOR_SOURCE',
-}
-
-/**
- * DEX sources to aggregate.
- */
-export enum ERC20BridgeSource {
-    Native = 'Native',
-    Uniswap = 'Uniswap',
-    UniswapV2 = 'Uniswap_V2',
-    Eth2Dai = 'Eth2Dai',
-    Kyber = 'Kyber',
-    Curve = 'Curve',
-    LiquidityProvider = 'LiquidityProvider',
-    MultiBridge = 'MultiBridge',
-    Balancer = 'Balancer',
-    BalancerV2 = 'Balancer_V2',
-    Cream = 'CREAM',
-    Bancor = 'Bancor',
-    MakerPsm = 'MakerPsm',
-    MStable = 'mStable',
-    Mooniswap = 'Mooniswap',
-    MultiHop = 'MultiHop',
-    Shell = 'Shell',
-    Swerve = 'Swerve',
-    SnowSwap = 'SnowSwap',
-    SushiSwap = 'SushiSwap',
-    Dodo = 'DODO',
-    DodoV2 = 'DODO_V2',
-    CryptoCom = 'CryptoCom',
-    Linkswap = 'Linkswap',
-    KyberDmm = 'KyberDMM',
-    Smoothy = 'Smoothy',
-    Component = 'Component',
-    Saddle = 'Saddle',
-    XSigma = 'xSigma',
-    UniswapV3 = 'Uniswap_V3',
-    // BSC only
-    PancakeSwap = 'PancakeSwap',
-    PancakeSwapV2 = 'PancakeSwap_V2',
-    BakerySwap = 'BakerySwap',
-    Nerve = 'Nerve',
-    Belt = 'Belt',
-    Ellipsis = 'Ellipsis',
-    ApeSwap = 'ApeSwap',
-    CafeSwap = 'CafeSwap',
-    CheeseSwap = 'CheeseSwap',
-    JulSwap = 'JulSwap',
-    // Polygon only
-    QuickSwap = 'QuickSwap',
-    ComethSwap = 'ComethSwap',
-    Dfyn = 'Dfyn',
 }
 export type SourcesWithPoolsCache = ERC20BridgeSource.Balancer | ERC20BridgeSource.BalancerV2 | ERC20BridgeSource.Cream;
 
@@ -135,26 +86,11 @@ export interface BalancerV2PoolInfo {
     vault: string;
 }
 
-// Internal `fillData` field for `Fill` objects.
-export interface FillData {}
-
 // `FillData` for native fills. Represents a single native order
 export type NativeRfqOrderFillData = FillQuoteTransformerRfqOrderInfo;
 export type NativeLimitOrderFillData = FillQuoteTransformerLimitOrderInfo;
 export type NativeFillData = NativeRfqOrderFillData | NativeLimitOrderFillData;
 
-// Represents an individual DEX sample from the sampler contract
-export interface DexSample<TFillData extends FillData = FillData> {
-    source: ERC20BridgeSource;
-    fillData: TFillData;
-    input: BigNumber;
-    output: BigNumber;
-}
-export interface CurveFillData extends FillData {
-    fromTokenIdx: number;
-    toTokenIdx: number;
-    pool: CurveInfo;
-}
 
 export interface BalancerFillData extends FillData {
     poolAddress: string;
@@ -172,11 +108,6 @@ export interface UniswapV2FillData extends FillData {
 
 export interface ShellFillData extends FillData {
     poolAddress: string;
-}
-
-export interface LiquidityProviderFillData extends FillData {
-    poolAddress: string;
-    gasCost: number;
 }
 
 export interface BancorFillData extends FillData {
@@ -220,12 +151,6 @@ export type MakerPsmFillData = FillData & MakerPsmExtendedData & PsmInfo;
 export interface HopInfo {
     sourceIndex: BigNumber;
     returnData: string;
-}
-
-export interface UniswapV3FillData extends FillData {
-    tokenAddressPath: string[];
-    router: string;
-    pathAmounts: Array<{ uniswapPath: string; inputAmount: BigNumber }>;
 }
 
 export interface KyberDmmFillData extends UniswapV2FillData {
@@ -430,10 +355,16 @@ export interface BatchedOperation<TResult> {
     handleRevert(callResults: string): TResult;
 }
 
-export interface SourceQuoteOperation<TFillData extends FillData = FillData> extends BatchedOperation<BigNumber[]> {
-    readonly source: ERC20BridgeSource;
+export interface SourceQuoteOperationResult<TFillData extends FillData = FillData> {
+    outputAmount: BigNumber;
     fillData: TFillData;
 }
+
+export interface SourceQuoteOperation<TFillData extends FillData = FillData> extends BatchedOperation<SourceQuoteOperationResult<TFillData>[]> {
+    readonly source: ERC20BridgeSource;
+}
+
+export type PoolsCaches = { [key in SourcesWithPoolsCache]: PoolsCache };
 
 export interface OptimizerResult {
     optimizedOrders: OptimizedMarketOrder[];
@@ -484,13 +415,6 @@ export interface RawQuotes {
 export interface TokenAdjacencyGraph {
     [token: string]: string[];
     default: string[];
-}
-
-export interface LiquidityProviderRegistry {
-    [address: string]: {
-        tokens: string[];
-        gasCost: number | ((takerToken: string, makerToken: string) => number);
-    };
 }
 
 export interface GenerateOptimizedOrdersOpts {

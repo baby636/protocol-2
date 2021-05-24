@@ -1,6 +1,7 @@
 import { ChainId } from '@0x/contract-addresses';
 import { BigNumber, NULL_BYTES } from '@0x/utils';
 
+import { ERC20BridgeSource } from '../../sources/types';
 import {
     APESWAP_ROUTER_BY_CHAIN_ID,
     BAKERYSWAP_ROUTER_BY_CHAIN_ID,
@@ -35,7 +36,7 @@ import {
     UNISWAPV2_ROUTER_BY_CHAIN_ID,
     XSIGMA_MAINNET_INFOS,
 } from './constants';
-import { CurveInfo, ERC20BridgeSource } from './types';
+import { CurveInfo } from './types';
 
 /**
  * Filter Kyber reserves which should not be used (0xbb bridged reserves)
