@@ -17,6 +17,7 @@ import * as DummyLiquidityProvider from '../test/generated-artifacts/DummyLiquid
 import * as ERC20BridgeSampler from '../test/generated-artifacts/ERC20BridgeSampler.json';
 import * as Eth2DaiSampler from '../test/generated-artifacts/Eth2DaiSampler.json';
 import * as FakeTaker from '../test/generated-artifacts/FakeTaker.json';
+import * as HackedERC20 from '../test/generated-artifacts/HackedERC20.json';
 import * as IBalancer from '../test/generated-artifacts/IBalancer.json';
 import * as IBancor from '../test/generated-artifacts/IBancor.json';
 import * as ICurve from '../test/generated-artifacts/ICurve.json';
@@ -40,6 +41,7 @@ import * as NativeOrderSampler from '../test/generated-artifacts/NativeOrderSamp
 import * as SamplerUtils from '../test/generated-artifacts/SamplerUtils.json';
 import * as ShellSampler from '../test/generated-artifacts/ShellSampler.json';
 import * as SmoothySampler from '../test/generated-artifacts/SmoothySampler.json';
+import * as SwapRevertSampler from '../test/generated-artifacts/SwapRevertSampler.json';
 import * as TestERC20BridgeSampler from '../test/generated-artifacts/TestERC20BridgeSampler.json';
 import * as TestNativeOrderSampler from '../test/generated-artifacts/TestNativeOrderSampler.json';
 import * as TwoHopSampler from '../test/generated-artifacts/TwoHopSampler.json';
@@ -59,6 +61,7 @@ export const artifacts = {
     ERC20BridgeSampler: ERC20BridgeSampler as ContractArtifact,
     Eth2DaiSampler: Eth2DaiSampler as ContractArtifact,
     FakeTaker: FakeTaker as ContractArtifact,
+    HackedERC20: HackedERC20 as ContractArtifact,
     KyberDmmSampler: KyberDmmSampler as ContractArtifact,
     KyberSampler: KyberSampler as ContractArtifact,
     LiquidityProviderSampler: LiquidityProviderSampler as ContractArtifact,
@@ -70,6 +73,7 @@ export const artifacts = {
     SamplerUtils: SamplerUtils as ContractArtifact,
     ShellSampler: ShellSampler as ContractArtifact,
     SmoothySampler: SmoothySampler as ContractArtifact,
+    SwapRevertSampler: SwapRevertSampler as ContractArtifact,
     TwoHopSampler: TwoHopSampler as ContractArtifact,
     UniswapSampler: UniswapSampler as ContractArtifact,
     UniswapV2Sampler: UniswapV2Sampler as ContractArtifact,

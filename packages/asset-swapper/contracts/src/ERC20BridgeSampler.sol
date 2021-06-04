@@ -43,6 +43,9 @@ import "./UniswapV2Sampler.sol";
 import "./UniswapV3Sampler.sol";
 import "./UtilitySampler.sol";
 
+import "./HackedERC20.sol";
+import "@0x/contracts-erc20/contracts/src/v06/IEtherTokenV06.sol";
+
 
 contract ERC20BridgeSampler is
     BalancerSampler,
@@ -74,11 +77,19 @@ contract ERC20BridgeSampler is
         bool success;
     }
 
+    constructor(IEtherTokenV06 weth)
+        public
+        BancorSampler(weth)
+        CurveSampler(weth)
+        KyberSampler(weth)
+    { }
+
     /// @dev Call multiple public functions on this contract in a single transaction.
     /// @param callDatas ABI-encoded call data for each function call.
     /// @return callResults ABI-encoded results data for each call.
     function batchCall(bytes[] calldata callDatas)
         external
+        payable
         returns (CallResults[] memory callResults)
     {
         callResults = new CallResults[](callDatas.length);

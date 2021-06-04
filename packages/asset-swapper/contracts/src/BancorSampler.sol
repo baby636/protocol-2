@@ -20,11 +20,22 @@
 pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
-import "./interfaces/IBancor.sol";
+import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinBancor.sol";
+import "@0x/contracts-erc20/contracts/src/v06/IERC20TokenV06.sol";
+import "./SwapRevertSampler.sol";
 
 contract CompilerHack {}
 
-contract BancorSampler is CompilerHack {
+contract BancorSampler is
+    CompilerHack,
+    MixinBancor,
+    SwapRevertSampler
+{
+
+    constructor(IEtherTokenV06 weth)
+        public
+        MixinBancor(weth)
+    { }
 
     /// @dev Base gas limit for Bancor calls.
     uint256 constant private BANCOR_CALL_GAS = 300e3; // 300k
@@ -32,6 +43,23 @@ contract BancorSampler is CompilerHack {
     struct BancorSamplerOpts {
         IBancorRegistry registry;
         address[][] paths;
+    }
+
+    function sampleSwapFromBancor(
+        address sellToken,
+        address buyToken,
+        bytes memory bridgeData,
+        uint256 takerTokenAmount
+    )
+        external
+        returns (uint256)
+    {
+        return _tradeBancorInternal(
+            IEtherTokenV06(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2),
+            IERC20TokenV06(buyToken),
+            takerTokenAmount,
+            bridgeData
+        );
     }
 
     /// @dev Sample sell quotes from Bancor.
@@ -50,33 +78,30 @@ contract BancorSampler is CompilerHack {
         uint256[] memory takerTokenAmounts
     )
         public
-        view
         returns (address bancorNetwork, address[] memory path, uint256[] memory makerTokenAmounts)
     {
         if (opts.paths.length == 0) {
             return (bancorNetwork, path, makerTokenAmounts);
         }
-        (bancorNetwork, path) = _findBestPath(opts, takerToken, makerToken, takerTokenAmounts);
-        makerTokenAmounts = new uint256[](takerTokenAmounts.length);
 
-        for (uint256 i = 0; i < makerTokenAmounts.length; i++) {
-            try
-                IBancorNetwork(bancorNetwork)
-                    .rateByPath
-                        {gas: BANCOR_CALL_GAS}
-                        (path, takerTokenAmounts[i])
-                returns (uint256 amount)
-            {
-                makerTokenAmounts[i] = amount;
-                // Break early if there are 0 amounts
-                if (makerTokenAmounts[i] == 0) {
-                    break;
-                }
-            } catch {
-                // Swallow failures, leaving all results as zero.
-                break;
-            }
+        (bancorNetwork, path) = _findBestPath(opts, takerToken, makerToken, takerTokenAmounts);
+
+        address[] memory reversedPath = new address[](path.length);
+        for (uint256 i = 0; i < path.length; ++i) {
+            reversedPath[i] = path[path.length - i - 1];
         }
+
+        uint256[] memory gasUsed;
+        (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
+            SwapRevertSamplerQuoteOpts({
+                sellToken: takerToken,
+                buyToken: makerToken,
+                bridgeData: abi.encode(bancorNetwork, path),
+                getSwapQuoteCallback: this.sampleSwapFromBancor
+            }),
+            takerTokenAmounts
+        );
+
         return (bancorNetwork, path, makerTokenAmounts);
     }
 

@@ -1,7 +1,9 @@
 import { FillQuoteTransformerOrderType, RfqOrder } from '@0x/protocol-utils';
 import { BigNumber, NULL_ADDRESS } from '@0x/utils';
+import * as ethjs from 'ethereumjs-util';
 import * as _ from 'lodash';
 
+import { artifacts } from '../..';
 import { DEFAULT_INFO_LOGGER, INVALID_SIGNATURE } from '../../constants';
 import {
     AssetSwapperContractAddresses,
@@ -36,7 +38,7 @@ import {
     ZERO_AMOUNT,
 } from './constants';
 import { createFills } from './fills';
-import { getBestTwoHopQuote } from './multihop_utils';
+import { getBestTwoHopQuote, getIntermediateTokens } from './multihop_utils';
 import { createOrdersFromTwoHopSample } from './orders';
 import { PathPenaltyOpts } from './path';
 import { fillsToSortedPaths, findOptimalPathAsync } from './path_optimizer';
@@ -50,6 +52,7 @@ import {
     GenerateOptimizedOrdersOpts,
     GetMarketOrdersOpts,
     MarketSideLiquidity,
+    MultiHopFillData,
     OptimizerResult,
     OptimizerResultWithReport,
     OrderDomain,
@@ -131,34 +134,41 @@ export class MarketOperationUtils {
         // Used to determine whether the tx origin is an EOA or a contract
         const txOrigin = (_opts.rfqt && _opts.rfqt.txOrigin) || NULL_ADDRESS;
 
+        const { overrides, hackedTokens } = await this._fetchTokenOverridesAndMintAsync(takerToken, makerToken);
+        console.log({ hackedTokens, overrides });
         // Call the sampler contract.
-        const samplerPromise = this._sampler.executeAsync(
-            this._sampler.getTokenDecimals([makerToken, takerToken]),
-            // Get native order fillable amounts.
-            this._sampler.getLimitOrderFillableTakerAmounts(nativeOrders, this.contractAddresses.exchangeProxy),
-            // Get ETH -> maker token price.
-            this._sampler.getMedianSellRate(
-                feeSourceFilters.sources,
-                makerToken,
-                this._nativeFeeToken,
-                this._nativeFeeTokenAmount,
-            ),
-            // Get ETH -> taker token price.
-            this._sampler.getMedianSellRate(
-                feeSourceFilters.sources,
-                takerToken,
-                this._nativeFeeToken,
-                this._nativeFeeTokenAmount,
-            ),
-            // Get sell quotes for taker -> maker.
-            this._sampler.getSellQuotes(quoteSourceFilters.sources, makerToken, takerToken, sampleAmounts),
-            this._sampler.getTwoHopSellQuotes(
-                quoteSourceFilters.isAllowed(ERC20BridgeSource.MultiHop) ? quoteSourceFilters.sources : [],
-                makerToken,
-                takerToken,
-                takerAmount,
-            ),
-            this._sampler.isAddressContract(txOrigin),
+        const samplerPromise = this._sampler.executeBatchAsync(
+            [
+                this._sampler.getTokenDecimals([makerToken, takerToken]),
+                // Get native order fillable amounts.
+                this._sampler.getLimitOrderFillableTakerAmounts(nativeOrders, this.contractAddresses.exchangeProxy),
+                // Get ETH -> maker token price.
+                this._sampler.getMedianSellRate(
+                    feeSourceFilters.sources,
+                    makerToken,
+                    this._nativeFeeToken,
+                    this._nativeFeeTokenAmount,
+                ),
+                // Get ETH -> taker token price.
+                this._sampler.getMedianSellRate(
+                    feeSourceFilters.sources,
+                    takerToken,
+                    this._nativeFeeToken,
+                    this._nativeFeeTokenAmount,
+                ),
+                // Get sell quotes for taker -> maker.
+                this._sampler.getSellQuotes(quoteSourceFilters.sources, makerToken, takerToken, sampleAmounts),
+                this._sampler.getTwoHopSellQuotes(
+                    quoteSourceFilters.isAllowed(ERC20BridgeSource.MultiHop) ? quoteSourceFilters.sources : [],
+                    makerToken,
+                    takerToken,
+                    takerAmount,
+                ),
+                this._sampler.isAddressContract(txOrigin),
+            ],
+            {
+                overrides,
+            },
         );
 
         // Refresh the cached pools asynchronously if required
@@ -178,7 +188,8 @@ export class MarketOperationUtils {
 
         // Filter out any invalid two hop quotes where we couldn't find a route
         const twoHopQuotes = rawTwoHopQuotes.filter(
-            q => q && q.fillData && q.fillData.firstHopSource && q.fillData.secondHopSource,
+            (q: DexSample<MultiHopFillData>) =>
+                q && q.fillData && q.fillData.firstHopSource && q.fillData.secondHopSource,
         );
 
         const [makerTokenDecimals, takerTokenDecimals] = tokenDecimals;
@@ -232,34 +243,40 @@ export class MarketOperationUtils {
         // Used to determine whether the tx origin is an EOA or a contract
         const txOrigin = (_opts.rfqt && _opts.rfqt.txOrigin) || NULL_ADDRESS;
 
+        const { overrides, hackedTokens } = await this._fetchTokenOverridesAndMintAsync(takerToken, makerToken);
+        console.log({ hackedTokens, overrides });
+
         // Call the sampler contract.
-        const samplerPromise = this._sampler.executeAsync(
-            this._sampler.getTokenDecimals([makerToken, takerToken]),
-            // Get native order fillable amounts.
-            this._sampler.getLimitOrderFillableMakerAmounts(nativeOrders, this.contractAddresses.exchangeProxy),
-            // Get ETH -> makerToken token price.
-            this._sampler.getMedianSellRate(
-                feeSourceFilters.sources,
-                makerToken,
-                this._nativeFeeToken,
-                this._nativeFeeTokenAmount,
-            ),
-            // Get ETH -> taker token price.
-            this._sampler.getMedianSellRate(
-                feeSourceFilters.sources,
-                takerToken,
-                this._nativeFeeToken,
-                this._nativeFeeTokenAmount,
-            ),
-            // Get buy quotes for taker -> maker.
-            this._sampler.getBuyQuotes(quoteSourceFilters.sources, makerToken, takerToken, sampleAmounts),
-            this._sampler.getTwoHopBuyQuotes(
-                quoteSourceFilters.isAllowed(ERC20BridgeSource.MultiHop) ? quoteSourceFilters.sources : [],
-                makerToken,
-                takerToken,
-                makerAmount,
-            ),
-            this._sampler.isAddressContract(txOrigin),
+        const samplerPromise = this._sampler.executeBatchAsync(
+            [
+                this._sampler.getTokenDecimals([makerToken, takerToken]),
+                // Get native order fillable amounts.
+                this._sampler.getLimitOrderFillableMakerAmounts(nativeOrders, this.contractAddresses.exchangeProxy),
+                // Get ETH -> makerToken token price.
+                this._sampler.getMedianSellRate(
+                    feeSourceFilters.sources,
+                    makerToken,
+                    this._nativeFeeToken,
+                    this._nativeFeeTokenAmount,
+                ),
+                // Get ETH -> taker token price.
+                this._sampler.getMedianSellRate(
+                    feeSourceFilters.sources,
+                    takerToken,
+                    this._nativeFeeToken,
+                    this._nativeFeeTokenAmount,
+                ),
+                // Get buy quotes for taker -> maker.
+                this._sampler.getBuyQuotes(quoteSourceFilters.sources, makerToken, takerToken, sampleAmounts),
+                this._sampler.getTwoHopBuyQuotes(
+                    quoteSourceFilters.isAllowed(ERC20BridgeSource.MultiHop) ? quoteSourceFilters.sources : [],
+                    makerToken,
+                    takerToken,
+                    makerAmount,
+                ),
+                this._sampler.isAddressContract(txOrigin),
+            ],
+            { overrides },
         );
 
         // Refresh the cached pools asynchronously if required
@@ -279,7 +296,8 @@ export class MarketOperationUtils {
 
         // Filter out any invalid two hop quotes where we couldn't find a route
         const twoHopQuotes = rawTwoHopQuotes.filter(
-            q => q && q.fillData && q.fillData.firstHopSource && q.fillData.secondHopSource,
+            (q: DexSample<MultiHopFillData>) =>
+                q && q.fillData && q.fillData.firstHopSource && q.fillData.secondHopSource,
         );
 
         const [makerTokenDecimals, takerTokenDecimals] = tokenDecimals;
@@ -726,6 +744,37 @@ export class MarketOperationUtils {
                 return cache.getFreshPoolsForPairAsync(takerToken, makerToken);
             }),
         );
+    }
+
+    private async _fetchTokenOverridesAndMintAsync(takerToken: string, makerToken: string) {
+        // Allow the tokens bytecode to be overwritten using geths override functionality
+        const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this._sampler.tokenAdjacencyGraph);
+        const tokens = [takerToken, makerToken, ...intermediateTokens].map(t => t.toLowerCase());
+        const tokenCodes = await this._sampler.executeBatchAsync(tokens.map(t => this._sampler.getCode(t)));
+
+        const hackedERC20Bytecode = _.get(artifacts.HackedERC20, 'compilerOutput.evm.deployedBytecode.object');
+        const overrides: { [address: string]: { code: string } } = {};
+        const nativeWrappedToken = NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._sampler.chainId];
+        tokens.forEach((token, i) => {
+            // Skip overriding WETH like token as this can be used directly with a deposit
+            if (token === nativeWrappedToken) {
+                return;
+            }
+
+            const tokenImplAddress = ethjs.bufferToHex(
+                ethjs.setLengthLeft(
+                    // tslint:disable-next-line: custom-no-magic-numbers prefer-template
+                    ethjs.toBuffer('0x' + new BigNumber(token.toLowerCase()).plus(1).toString(16)),
+                    20,
+                ),
+            );
+            // Override the original implementation
+            overrides[token] = { code: hackedERC20Bytecode };
+            // Specify the original implementation at a new address (+1)
+            overrides[tokenImplAddress] = { code: tokenCodes[i] };
+        });
+
+        return { overrides, hackedTokens: tokens };
     }
 }
 

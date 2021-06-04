@@ -44,14 +44,18 @@ export type SampleSellsKyberHandler = (
     takerToken: string,
     makerToken: string,
     takerTokenAmounts: BigNumber[],
-) => [string, string, SampleResults];
+) => [string, string, BigNumber[], SampleResults];
 export type SampleBuysKyberHandler = (
     reserveId: string,
     takerToken: string,
     makerToken: string,
     makerTokenAmounts: BigNumber[],
 ) => [string, SampleResults];
-export type SampleUniswapV2Handler = (router: string, path: string[], assetAmounts: BigNumber[]) => SampleResults;
+export type SampleUniswapV2Handler = (
+    router: string,
+    path: string[],
+    assetAmounts: BigNumber[],
+) => [BigNumber[], SampleResults];
 export type SampleBuysMultihopHandler = (path: string[], takerTokenAmounts: BigNumber[]) => SampleResults;
 export type SampleSellsLPHandler = (
     providerAddress: string,
@@ -130,7 +134,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractTxFunctionObj<[string, string, BigNumber[]]> {
+    ): ContractTxFunctionObj<[string, string, BigNumber[], BigNumber[]]> {
         return this._wrapCall(
             super.sampleSellsFromKyberNetwork,
             this._handlers.sampleSellsFromKyberNetwork,
@@ -177,7 +181,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         router: string,
         path: string[],
         takerAssetAmounts: BigNumber[],
-    ): ContractTxFunctionObj<BigNumber[]> {
+    ): ContractTxFunctionObj<[BigNumber[], BigNumber[]]> {
         return this._wrapCall(
             super.sampleSellsFromUniswapV2,
             this._handlers.sampleSellsFromUniswapV2,
@@ -239,7 +243,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         router: string,
         path: string[],
         makerAssetAmounts: BigNumber[],
-    ): ContractTxFunctionObj<BigNumber[]> {
+    ): ContractTxFunctionObj<[BigNumber[], BigNumber[]]> {
         return this._wrapCall(
             super.sampleBuysFromUniswapV2,
             this._handlers.sampleBuysFromUniswapV2,

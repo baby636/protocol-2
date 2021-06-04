@@ -27,7 +27,7 @@ import {
 import { assert } from './utils/assert';
 import { MarketOperationUtils } from './utils/market_operation_utils';
 import { BancorService } from './utils/market_operation_utils/bancor_service';
-import { SAMPLER_ADDRESS, SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
+import { MAX_UINT256, SAMPLER_ADDRESS, SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
 import { DexOrderSampler } from './utils/market_operation_utils/sampler';
 import { SourceFilters } from './utils/market_operation_utils/source_filters';
 import {
@@ -118,7 +118,7 @@ export class SwapQuoter {
         const samplerAddress = (options.samplerOverrides && options.samplerOverrides.to) || SAMPLER_ADDRESS;
         const defaultCodeOverrides = samplerBytecode
             ? {
-                  [samplerAddress]: { code: samplerBytecode },
+                  [samplerAddress]: { code: samplerBytecode, balance: MAX_UINT256 },
               }
             : {};
         const samplerOverrides = _.assign(

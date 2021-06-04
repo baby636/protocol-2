@@ -152,7 +152,7 @@ describe('DexSampler tests', () => {
                     expect(takerToken).to.eq(expectedTakerToken);
                     expect(makerToken).to.eq(expectedMakerToken);
                     expect(fillAmounts).to.deep.eq(expectedTakerFillAmounts);
-                    return ['0x', '0x', expectedMakerFillAmounts];
+                    return ['0x', '0x', [], expectedMakerFillAmounts];
                 },
             });
             const dexOrderSampler = new DexOrderSampler(
@@ -339,7 +339,7 @@ describe('DexSampler tests', () => {
                 sampleSellsFromUniswapV2: (_router, path, fillAmounts) => {
                     expect(path).to.deep.eq([expectedMakerToken, expectedTakerToken]);
                     expect(fillAmounts).to.deep.eq(expectedTakerFillAmounts);
-                    return expectedMakerFillAmounts;
+                    return [[], expectedMakerFillAmounts];
                 },
             });
             const dexOrderSampler = new DexOrderSampler(
@@ -470,7 +470,10 @@ describe('DexSampler tests', () => {
                         expect(path).to.have.lengthOf.within(2, 3);
                     }
                     expect(fillAmounts).to.deep.eq(expectedTakerFillAmounts);
-                    return fillAmounts.map(a => a.times(ratesBySource[ERC20BridgeSource.UniswapV2]).integerValue());
+                    return [
+                        [],
+                        fillAmounts.map(a => a.times(ratesBySource[ERC20BridgeSource.UniswapV2]).integerValue()),
+                    ];
                 },
             });
             const dexOrderSampler = new DexOrderSampler(
@@ -567,7 +570,10 @@ describe('DexSampler tests', () => {
                         expect(path).to.have.lengthOf.within(2, 3);
                     }
                     expect(fillAmounts).to.deep.eq(expectedMakerFillAmounts);
-                    return fillAmounts.map(a => a.times(ratesBySource[ERC20BridgeSource.UniswapV2]).integerValue());
+                    return [
+                        [],
+                        fillAmounts.map(a => a.times(ratesBySource[ERC20BridgeSource.UniswapV2]).integerValue()),
+                    ];
                 },
             });
             const dexOrderSampler = new DexOrderSampler(
