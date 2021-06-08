@@ -29,8 +29,6 @@ contract UniswapV2Sampler is
     MixinUniswapV2,
     SwapRevertSampler
 {
-    /// @dev Gas limit for UniswapV2 calls.
-    uint256 constant private UNISWAPV2_CALL_GAS = 150e3; // 150k
 
     function sampleSwapFromUniswapV2(
         address sellToken,
@@ -41,7 +39,11 @@ contract UniswapV2Sampler is
         external
         returns (uint256)
     {
-        return _tradeUniswapV2(IERC20TokenV06(buyToken), takerTokenAmount, bridgeData);
+        return _tradeUniswapV2(
+            IERC20TokenV06(buyToken),
+            takerTokenAmount,
+            bridgeData
+        );
     }
 
     /// @dev Sample sell quotes from UniswapV2.

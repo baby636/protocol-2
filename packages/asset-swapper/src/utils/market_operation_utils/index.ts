@@ -66,6 +66,7 @@ export class MarketOperationUtils {
     private readonly _feeSources: SourceFilters;
     private readonly _nativeFeeToken: string;
     private readonly _nativeFeeTokenAmount: BigNumber;
+    private readonly _contractCodeByAddress: { [address: string]: string | undefined } = {};
 
     private static _computeQuoteReport(
         quoteRequestor: QuoteRequestor | undefined,
@@ -134,8 +135,7 @@ export class MarketOperationUtils {
         // Used to determine whether the tx origin is an EOA or a contract
         const txOrigin = (_opts.rfqt && _opts.rfqt.txOrigin) || NULL_ADDRESS;
 
-        const { overrides, hackedTokens } = await this._fetchTokenOverridesAndMintAsync(takerToken, makerToken);
-        console.log({ hackedTokens, overrides });
+        const { overrides } = await this._fetchTokenOverridesAsync(takerToken, makerToken);
         // Call the sampler contract.
         const samplerPromise = this._sampler.executeBatchAsync(
             [
@@ -243,9 +243,7 @@ export class MarketOperationUtils {
         // Used to determine whether the tx origin is an EOA or a contract
         const txOrigin = (_opts.rfqt && _opts.rfqt.txOrigin) || NULL_ADDRESS;
 
-        const { overrides, hackedTokens } = await this._fetchTokenOverridesAndMintAsync(takerToken, makerToken);
-        console.log({ hackedTokens, overrides });
-
+        const { overrides } = await this._fetchTokenOverridesAsync(takerToken, makerToken);
         // Call the sampler contract.
         const samplerPromise = this._sampler.executeBatchAsync(
             [
@@ -746,11 +744,23 @@ export class MarketOperationUtils {
         );
     }
 
-    private async _fetchTokenOverridesAndMintAsync(takerToken: string, makerToken: string) {
+    private async _fetchTokenOverridesAsync(takerToken: string, makerToken: string) {
         // Allow the tokens bytecode to be overwritten using geths override functionality
         const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this._sampler.tokenAdjacencyGraph);
         const tokens = [takerToken, makerToken, ...intermediateTokens].map(t => t.toLowerCase());
-        const tokenCodes = await this._sampler.executeBatchAsync(tokens.map(t => this._sampler.getCode(t)));
+
+        // Fetch all of the missing token codes
+        const missingTokenCodesTokens = tokens.filter(t => !this._contractCodeByAddress[t]);
+        if (missingTokenCodesTokens.length > 0) {
+            const missingTokenCodes = await this._sampler.executeBatchAsync(
+                missingTokenCodesTokens.map(t => this._sampler.getCode(t)),
+            );
+            missingTokenCodes.forEach((code, i) => {
+                this._contractCodeByAddress[missingTokenCodesTokens[i]] = code;
+            });
+        }
+
+        const tokenCodes = tokens.map(t => this._contractCodeByAddress[t]!);
 
         const hackedERC20Bytecode = _.get(artifacts.HackedERC20, 'compilerOutput.evm.deployedBytecode.object');
         const overrides: { [address: string]: { code: string } } = {};
@@ -774,7 +784,7 @@ export class MarketOperationUtils {
             overrides[tokenImplAddress] = { code: tokenCodes[i] };
         });
 
-        return { overrides, hackedTokens: tokens };
+        return { overrides };
     }
 }
 

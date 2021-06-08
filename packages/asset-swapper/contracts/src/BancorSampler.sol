@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
 
-  Copyright 2020 ZeroEx Intl.
+  Copyright 2021 ZeroEx Intl.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinBancor.sol";
-import "@0x/contracts-erc20/contracts/src/v06/IERC20TokenV06.sol";
 import "./SwapRevertSampler.sol";
 
 contract CompilerHack {}
@@ -69,6 +68,7 @@ contract BancorSampler is
     /// @param takerTokenAmounts Taker token sell amount for each sample.
     /// @return bancorNetwork the Bancor Network address
     /// @return path the selected conversion path from bancor
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromBancor(
@@ -78,18 +78,18 @@ contract BancorSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (address bancorNetwork, address[] memory path, uint256[] memory makerTokenAmounts)
+        returns (
+            address bancorNetwork,
+            address[] memory path,
+            uint256[] memory gasUsed,
+            uint256[] memory makerTokenAmounts
+        )
     {
         if (opts.paths.length == 0) {
-            return (bancorNetwork, path, makerTokenAmounts);
+            return (bancorNetwork, path, gasUsed, makerTokenAmounts);
         }
 
         (bancorNetwork, path) = _findBestPath(opts, takerToken, makerToken, takerTokenAmounts);
-
-        address[] memory reversedPath = new address[](path.length);
-        for (uint256 i = 0; i < path.length; ++i) {
-            reversedPath[i] = path[path.length - i - 1];
-        }
 
         uint256[] memory gasUsed;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
@@ -102,7 +102,7 @@ contract BancorSampler is
             takerTokenAmounts
         );
 
-        return (bancorNetwork, path, makerTokenAmounts);
+        return (bancorNetwork, path, gasUsed, makerTokenAmounts);
     }
 
     /// @dev Sample buy quotes from Bancor. Unimplemented

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
 
-  Copyright 2020 ZeroEx Intl.
+  Copyright 2021 ZeroEx Intl.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -31,19 +31,16 @@ import "./KyberSampler.sol";
 import "./KyberDmmSampler.sol";
 import "./LiquidityProviderSampler.sol";
 import "./MakerPSMSampler.sol";
-import "./MultiBridgeSampler.sol";
 import "./MStableSampler.sol";
 import "./MooniswapSampler.sol";
 import "./NativeOrderSampler.sol";
 import "./ShellSampler.sol";
-import "./SmoothySampler.sol";
 import "./TwoHopSampler.sol";
 import "./UniswapSampler.sol";
 import "./UniswapV2Sampler.sol";
 import "./UniswapV3Sampler.sol";
 import "./UtilitySampler.sol";
 
-import "./HackedERC20.sol";
 import "@0x/contracts-erc20/contracts/src/v06/IEtherTokenV06.sol";
 
 
@@ -61,10 +58,8 @@ contract ERC20BridgeSampler is
     MakerPSMSampler,
     MStableSampler,
     MooniswapSampler,
-    MultiBridgeSampler,
     NativeOrderSampler,
     ShellSampler,
-    SmoothySampler,
     TwoHopSampler,
     UniswapSampler,
     UniswapV2Sampler,
@@ -82,6 +77,8 @@ contract ERC20BridgeSampler is
         BancorSampler(weth)
         CurveSampler(weth)
         KyberSampler(weth)
+        MooniswapSampler(weth)
+        UniswapSampler(weth)
     { }
 
     /// @dev Call multiple public functions on this contract in a single transaction.

@@ -114,7 +114,7 @@ contract SwapRevertSampler {
             data.rrevert();
         }
         // Revert with the amount bought
-        _revertSwapSample(abi.decode(data, (uint256)));
+        _revertSwapSample(abi.decode(data, (uint256)), gasUsed);
     }
 
     function _sampleSwapQuotesRevert(
@@ -128,9 +128,8 @@ contract SwapRevertSampler {
         gasUsed = new uint256[](amountsIn.length);
 
         for (uint256 i = 0; i < amountsIn.length; i++) {
-            uint256 gasBefore = gasleft();
             try
-                this._mintCallRevert(
+                this._mintCallRevert{gas: 2e6}(
                     opts.getSwapQuoteCallback.selector,
                     opts.sellToken,
                     opts.buyToken,
@@ -140,8 +139,10 @@ contract SwapRevertSampler {
             {
                 require(false, "Swap Sample should have reverted");
             } catch (bytes memory reason) {
-                gasUsed[i] = gasBefore - gasleft();
-                amountsOut[i] = _parseRevertedSwapSample(reason);
+                // Parse the reverted sample data
+                // Flip the second parameter during development to raise the underlying revert
+                // if one exists
+                (amountsOut[i], gasUsed[i]) = _parseRevertedSwapSample(reason, false);
                 // If we detect the amount out is 0 then we return early
                 // rather than continue performing excess work
                 if (amountsOut[i] == 0) {
@@ -152,7 +153,8 @@ contract SwapRevertSampler {
     }
 
     function _revertSwapSample(
-        uint256 amount
+        uint256 amount,
+        uint256 gasUsed
     )
         internal
     {
@@ -160,7 +162,8 @@ contract SwapRevertSampler {
         assembly {
             let ptr := mload(0x40)
             mstore(ptr, amount)
-            revert(ptr, 32)
+            mstore(add(ptr, 32), gasUsed)
+            revert(ptr, 64)
         }
     }
 
@@ -168,24 +171,25 @@ contract SwapRevertSampler {
     ///      is decoded, 0 is returned.
     /// @param reason the string which contains the possible
     ///               sample amount
+    /// @param revertOnError  whether to return 0 or revert if invalid
     /// @return the decoded sample amount or 0
+    /// @return the gas used in the sample
     function _parseRevertedSwapSample(
-        bytes memory reason
+        bytes memory reason,
+        bool revertOnError
     )
         internal
         pure
-        returns (uint256)
+        returns (uint256, uint256)
     {
-        if (reason.length != 32) {
-            // if (reason.length < 68) revert('Unexpected error');
-            // assembly {
-            //     reason := add(reason, 0x04)
-            // }
-            // revert(abi.decode(reason, (string)));
-            // return 0;
-            reason.rrevert();
+        if (reason.length != 64) {
+            if (revertOnError) {
+                reason.rrevert();
+            } else {
+                return (0,0);
+            }
         }
-        return abi.decode(reason, (uint256));
+        return abi.decode(reason, (uint256, uint256));
     }
 
     uint256 private constant ONE_HUNDED_PERCENT_BPS = 1e4;

@@ -21,18 +21,14 @@ pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
 import "./interfaces/IKyberNetwork.sol";
-import "./ApproximateBuys.sol";
-import "./SamplerUtils.sol";
 import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinKyber.sol";
 import "./SwapRevertSampler.sol";
 
-
 contract KyberSampler is
-    SamplerUtils,
-    ApproximateBuys,
     MixinKyber,
     SwapRevertSampler
 {
+
     /// @dev Gas limit for Kyber calls.
     uint256 constant private KYBER_CALL_GAS = 500e3; // 500k
     /// @dev Kyber ETH pseudo-address.
@@ -94,7 +90,6 @@ contract KyberSampler is
             uint256[] memory makerTokenAmounts
         )
     {
-        _assertValidPair(makerToken, takerToken);
         reserveId = _getNextReserveId(opts, takerToken, makerToken);
         if (reserveId == 0x0) {
             return (reserveId, hint, gasUsed, makerTokenAmounts);
@@ -136,8 +131,6 @@ contract KyberSampler is
             uint256[] memory takerTokenAmounts
         )
     {
-        _assertValidPair(makerToken, takerToken);
-
         reserveId = _getNextReserveId(opts, takerToken, makerToken);
         if (reserveId == 0x0) {
             return (reserveId, hint, gasUsed, takerTokenAmounts);

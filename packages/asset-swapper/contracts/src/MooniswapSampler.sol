@@ -20,17 +20,40 @@
 pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
-import "./interfaces/IMooniswap.sol";
-import "./ApproximateBuys.sol";
-import "./SamplerUtils.sol";
+import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinMooniswap.sol";
+import "./SwapRevertSampler.sol";
 
+interface IMooniswapRegistry {
+    function pools(address token1, address token2) external view returns(address);
+}
 
 contract MooniswapSampler is
-    SamplerUtils,
-    ApproximateBuys
+    MixinMooniswap,
+    SwapRevertSampler
 {
-    /// @dev Gas limit for Mooniswap calls.
-    uint256 constant private MOONISWAP_CALL_GAS = 150e3; // 150k
+
+    constructor(IEtherTokenV06 weth)
+        public
+        MixinMooniswap(weth)
+    { }
+
+    function sampleSwapFromMooniswap(
+        address sellToken,
+        address buyToken,
+        bytes memory bridgeData,
+        uint256 takerTokenAmount
+    )
+        external
+        returns (uint256)
+    {
+        return _tradeMooniswapInternal(
+            IEtherTokenV06(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2),
+            IERC20TokenV06(sellToken),
+            IERC20TokenV06(buyToken),
+            takerTokenAmount,
+            bridgeData
+        );
+    }
 
     /// @dev Sample sell quotes from Mooniswap.
     /// @param registry Address of the Mooniswap Registry.
@@ -47,69 +70,19 @@ contract MooniswapSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        view
-        returns (IMooniswap pool, uint256[] memory makerTokenAmounts)
+        returns (address pool, uint256[] memory makerTokenAmounts)
     {
-        _assertValidPair(makerToken, takerToken);
-        uint256 numSamples = takerTokenAmounts.length;
-        makerTokenAmounts = new uint256[](numSamples);
-
-        for (uint256 i = 0; i < numSamples; i++) {
-            uint256 buyAmount = sampleSingleSellFromMooniswapPool(
-                registry,
-                takerToken,
-                makerToken,
-                takerTokenAmounts[i]
-            );
-            makerTokenAmounts[i] = buyAmount;
-            // Break early if there are 0 amounts
-            if (makerTokenAmounts[i] == 0) {
-                break;
-            }
-        }
-
-        pool = IMooniswap(
-            IMooniswapRegistry(registry).pools(takerToken, makerToken)
+        uint256[] memory gasUsed;
+        pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
+        (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
+            SwapRevertSamplerQuoteOpts({
+                sellToken: takerToken,
+                buyToken: makerToken,
+                bridgeData: abi.encode(pool),
+                getSwapQuoteCallback: this.sampleSwapFromMooniswap
+            }),
+            takerTokenAmounts
         );
-    }
-
-    function sampleSingleSellFromMooniswapPool(
-        address registry,
-        address mooniswapTakerToken,
-        address mooniswapMakerToken,
-        uint256 takerTokenAmount
-    )
-        public
-        view
-        returns (uint256)
-    {
-        // Find the pool for the pair.
-        IMooniswap pool = IMooniswap(
-            IMooniswapRegistry(registry).pools(mooniswapTakerToken, mooniswapMakerToken)
-        );
-        // If there is no pool then return early
-        if (address(pool) == address(0)) {
-            return 0;
-        }
-        uint256 poolBalance = mooniswapTakerToken == address(0)
-            ? address(pool).balance
-            : IERC20TokenV06(mooniswapTakerToken).balanceOf(address(pool));
-        // If the pool balance is smaller than the sell amount
-        // don't sample to avoid multiplication overflow in buys
-        if (poolBalance < takerTokenAmount) {
-            return 0;
-        }
-        try
-            pool.getReturn
-                {gas: MOONISWAP_CALL_GAS}
-                (mooniswapTakerToken, mooniswapMakerToken, takerTokenAmount)
-            returns (uint256 amount)
-        {
-            return amount;
-        } catch (bytes memory) {
-            // Swallow failures, leaving all results as zero.
-            return 0;
-        }
     }
 
     /// @dev Sample buy quotes from Mooniswap.
@@ -127,43 +100,20 @@ contract MooniswapSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        view
-        returns (IMooniswap pool, uint256[] memory takerTokenAmounts)
+        returns (address pool, uint256[] memory takerTokenAmounts)
     {
-        _assertValidPair(makerToken, takerToken);
-        uint256 numSamples = makerTokenAmounts.length;
-        takerTokenAmounts = new uint256[](numSamples);
-
-        takerTokenAmounts = _sampleApproximateBuys(
-            ApproximateBuyQuoteOpts({
-                makerTokenData: abi.encode(registry, makerToken),
-                takerTokenData: abi.encode(registry, takerToken),
-                getSellQuoteCallback: _sampleSellForApproximateBuyFromMooniswap
+        uint256[] memory gasUsed;
+        pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
+        (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
+            SwapRevertSamplerBuyQuoteOpts({
+                sellToken: takerToken,
+                buyToken: makerToken,
+                sellTokenData: abi.encode(pool),
+                buyTokenData: abi.encode(pool),
+                getSwapQuoteCallback: this.sampleSwapFromMooniswap
             }),
             makerTokenAmounts
         );
 
-        pool = IMooniswap(
-            IMooniswapRegistry(registry).pools(takerToken, makerToken)
-        );
-    }
-
-    function _sampleSellForApproximateBuyFromMooniswap(
-        bytes memory takerTokenData,
-        bytes memory makerTokenData,
-        uint256 sellAmount
-    )
-        private
-        view
-        returns (uint256 buyAmount)
-    {
-        (address registry, address mooniswapTakerToken) = abi.decode(takerTokenData, (address, address));
-        (address _registry, address mooniswapMakerToken) = abi.decode(makerTokenData, (address, address));
-        return sampleSingleSellFromMooniswapPool(
-            registry,
-            mooniswapTakerToken,
-            mooniswapMakerToken,
-            sellAmount
-        );
     }
 }

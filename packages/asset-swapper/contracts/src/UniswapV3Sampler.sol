@@ -21,18 +21,18 @@ pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-erc20/contracts/src/v06/IERC20TokenV06.sol";
+import "@0x/contracts-utils/contracts/src/v06/errors/LibRichErrorsV06.sol";
+
+import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinUniswapV3.sol";
+import "./SwapRevertSampler.sol";
+import "./SamplerUtils.sol";
+
 
 interface IUniswapV3Quoter {
     function factory()
         external
         view
         returns (IUniswapV3Factory factory);
-    function quoteExactInput(bytes memory path, uint256 amountIn)
-        external
-        returns (uint256 amountOut);
-    function quoteExactOutput(bytes memory path, uint256 amountOut)
-        external
-        returns (uint256 amountIn);
 }
 
 interface IUniswapV3Factory {
@@ -48,26 +48,48 @@ interface IUniswapV3Pool {
     function fee() external view returns (uint24);
 }
 
-contract UniswapV3Sampler
+contract UniswapV3Sampler is
+    MixinUniswapV3,
+    SwapRevertSampler,
+    SamplerUtils
 {
-    /// @dev Gas limit for UniswapV3 calls. This is 100% a guess.
-    uint256 constant private QUOTE_GAS = 300e3;
+    using LibRichErrorsV06 for bytes;
+
+    function sampleSwapFromUniswapV3(
+        address sellToken,
+        address buyToken,
+        bytes memory bridgeData,
+        uint256 takerTokenAmount
+    )
+        external
+        returns (uint256)
+    {
+        return _tradeUniswapV3(
+            IERC20TokenV06(sellToken),
+            takerTokenAmount,
+            bridgeData
+        );
+    }
 
     /// @dev Sample sell quotes from UniswapV3.
     /// @param quoter UniswapV3 Quoter contract.
+    /// @param router UniswapV3 Router contract.
     /// @param path Token route. Should be takerToken -> makerToken
     /// @param takerTokenAmounts Taker token sell amount for each sample.
     /// @return uniswapPaths The encoded uniswap path for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromUniswapV3(
         IUniswapV3Quoter quoter,
+        address router,
         IERC20TokenV06[] memory path,
         uint256[] memory takerTokenAmounts
     )
         public
         returns (
             bytes[] memory uniswapPaths,
+            uint256[] memory gasUsed,
             uint256[] memory makerTokenAmounts
         )
     {
@@ -75,50 +97,58 @@ contract UniswapV3Sampler
             _getValidPoolPaths(quoter.factory(), path, 0);
 
         makerTokenAmounts = new uint256[](takerTokenAmounts.length);
+        gasUsed = new uint256[](takerTokenAmounts.length);
         uniswapPaths = new bytes[](takerTokenAmounts.length);
 
         for (uint256 i = 0; i < takerTokenAmounts.length; ++i) {
-            // Pick the best result from all the paths.
-            bytes memory topUniswapPath;
-            uint256 topBuyAmount = 0;
             for (uint256 j = 0; j < poolPaths.length; ++j) {
-                bytes memory uniswapPath = _toUniswapPath(path, poolPaths[j]);
-                try
-                    quoter.quoteExactInput
-                        { gas: QUOTE_GAS }
-                        (uniswapPath, takerTokenAmounts[i])
-                        returns (uint256 buyAmount)
-                {
-                    if (topBuyAmount <= buyAmount) {
-                        topBuyAmount = buyAmount;
-                        topUniswapPath = uniswapPath;
-                    }
-                } catch { }
+                bytes memory _uniswapPath = _toUniswapPath(path, poolPaths[j]);
+
+                (
+                    uint256[] memory _gasUsed,
+                    uint256[] memory _makerTokenAmounts
+                ) = _sampleSwapQuotesRevert(
+                    SwapRevertSamplerQuoteOpts({
+                        sellToken: address(path[0]),
+                        buyToken: address(path[path.length - 1]),
+                        bridgeData: abi.encode(router, _uniswapPath),
+                        getSwapQuoteCallback: this.sampleSwapFromUniswapV3
+                    }),
+                    _toSingleValueArray(takerTokenAmounts[i])
+                );
+                // If this is better than what we have found, prefer it
+                if (makerTokenAmounts[i] <= _makerTokenAmounts[0]) {
+                    makerTokenAmounts[i] = _makerTokenAmounts[0];
+                    gasUsed[i] = _gasUsed[0];
+                    uniswapPaths[i] = _uniswapPath;
+                }
             }
-            // Break early if we can't complete the buys.
-            if (topBuyAmount == 0) {
+            // Break early if we can't complete the sells.
+            if (makerTokenAmounts[i] == 0) {
                 break;
             }
-            makerTokenAmounts[i] = topBuyAmount;
-            uniswapPaths[i] = topUniswapPath;
         }
     }
 
     /// @dev Sample buy quotes from UniswapV3.
     /// @param quoter UniswapV3 Quoter contract.
+    /// @param router UniswapV3 Router contract.
     /// @param path Token route. Should be takerToken -> makerToken.
     /// @param makerTokenAmounts Maker token buy amount for each sample.
     /// @return uniswapPaths The encoded uniswap path for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromUniswapV3(
         IUniswapV3Quoter quoter,
+        address router,
         IERC20TokenV06[] memory path,
         uint256[] memory makerTokenAmounts
     )
         public
         returns (
             bytes[] memory uniswapPaths,
+            uint256[] memory gasUsed,
             uint256[] memory takerTokenAmounts
         )
     {
@@ -127,37 +157,43 @@ contract UniswapV3Sampler
         IERC20TokenV06[] memory reversedPath = _reverseTokenPath(path);
 
         takerTokenAmounts = new uint256[](makerTokenAmounts.length);
+        gasUsed = new uint256[](makerTokenAmounts.length);
         uniswapPaths = new bytes[](makerTokenAmounts.length);
 
         for (uint256 i = 0; i < makerTokenAmounts.length; ++i) {
-            // Pick the best result from all the paths.
-            bytes memory topUniswapPath;
-            uint256 topSellAmount = 0;
             for (uint256 j = 0; j < poolPaths.length; ++j) {
-                // quoter requires path to be reversed for buys.
-                bytes memory uniswapPath = _toUniswapPath(
-                    reversedPath,
-                    _reversePoolPath(poolPaths[j])
+                (
+                    uint256[] memory _gasUsed,
+                    uint256[] memory _takerTokenAmounts
+                ) = _sampleSwapApproximateBuys(
+                    SwapRevertSamplerBuyQuoteOpts({
+                        sellToken: address(path[0]),
+                        buyToken: address(path[path.length - 1]),
+                        sellTokenData: abi.encode(router, _toUniswapPath(path, poolPaths[j])),
+                        buyTokenData: abi.encode(
+                            router,
+                            _toUniswapPath(
+                                reversedPath,
+                                _reversePoolPath(poolPaths[j])
+                            )
+                        ),
+                        getSwapQuoteCallback: this.sampleSwapFromUniswapV3
+                    }),
+                    _toSingleValueArray(makerTokenAmounts[i])
                 );
-                try
-                    quoter.quoteExactOutput
-                        { gas: QUOTE_GAS }
-                        (uniswapPath, makerTokenAmounts[i])
-                        returns (uint256 sellAmount)
-                {
-                    if (topSellAmount == 0 || topSellAmount >= sellAmount) {
-                        topSellAmount = sellAmount;
-                        // But the output path should still be encoded for sells.
-                        topUniswapPath = _toUniswapPath(path, poolPaths[j]);
-                    }
-                } catch {}
+
+                // We can go from high to low here
+                if (takerTokenAmounts[i] == 0 || takerTokenAmounts[i] >= _takerTokenAmounts[0]) {
+                    takerTokenAmounts[i] = _takerTokenAmounts[0];
+                    gasUsed[i] = _gasUsed[0];
+                    // But the output path should still be encoded for sells.
+                    uniswapPaths[i] = _toUniswapPath(path, poolPaths[j]);
+                }
             }
             // Break early if we can't complete the buys.
-            if (topSellAmount == 0) {
+            if (takerTokenAmounts[i] == 0) {
                 break;
             }
-            takerTokenAmounts[i] = topSellAmount;
-            uniswapPaths[i] = topUniswapPath;
         }
     }
 
@@ -268,7 +304,7 @@ contract UniswapV3Sampler
                 return false;
             }
         }
-        // Must have a balance of both tokens.
+        // // Must have a balance of both tokens.
         if (pool.token0().balanceOf(address(pool)) == 0) {
             return false;
         }

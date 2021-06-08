@@ -20,16 +20,11 @@
 pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
-import "./interfaces/ICurve.sol";
-import "./ApproximateBuys.sol";
-import "./SamplerUtils.sol";
 import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinCurve.sol";
 import "./SwapRevertSampler.sol";
 
 
 contract CurveSampler is
-    SamplerUtils,
-    ApproximateBuys,
     MixinCurve,
     SwapRevertSampler
 {
@@ -44,10 +39,6 @@ contract CurveSampler is
         public
         MixinCurve(weth)
     { }
-
-    /// @dev Base gas limit for Curve calls. Some Curves have multiple tokens
-    ///      So a reasonable ceil is 150k per token. Biggest Curve has 4 tokens.
-    uint256 constant private CURVE_CALL_GAS = 2000e3; // Was 600k for Curve but SnowSwap is using 1500k+
 
     function sampleSwapFromCurve(
         address sellToken,

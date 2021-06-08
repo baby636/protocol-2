@@ -27,7 +27,7 @@ import {
 import { assert } from './utils/assert';
 import { MarketOperationUtils } from './utils/market_operation_utils';
 import { BancorService } from './utils/market_operation_utils/bancor_service';
-import { MAX_UINT256, SAMPLER_ADDRESS, SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
+import { MAX_UINT256, SOURCE_FLAGS, ZERO_AMOUNT } from './utils/market_operation_utils/constants';
 import { DexOrderSampler } from './utils/market_operation_utils/sampler';
 import { SourceFilters } from './utils/market_operation_utils/source_filters';
 import {
@@ -115,7 +115,10 @@ export class SwapQuoter {
         // Allow the sampler bytecode to be overwritten using geths override functionality
         const samplerBytecode = _.get(artifacts.ERC20BridgeSampler, 'compilerOutput.evm.deployedBytecode.object');
         // Allow address of the Sampler to be overridden, i.e in Ganache where overrides do not work
-        const samplerAddress = (options.samplerOverrides && options.samplerOverrides.to) || SAMPLER_ADDRESS;
+        // We default the sampler address to be FlashWallet to account for allowances being set on tokens
+        const samplerAddress =
+            (options.samplerOverrides && options.samplerOverrides.to) ||
+            this._contractAddresses.exchangeProxyFlashWallet;
         const defaultCodeOverrides = samplerBytecode
             ? {
                   [samplerAddress]: { code: samplerBytecode, balance: MAX_UINT256 },

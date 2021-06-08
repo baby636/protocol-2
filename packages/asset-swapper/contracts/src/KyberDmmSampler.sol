@@ -20,6 +20,8 @@
 pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
+import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinKyberDmm.sol";
+import "./SwapRevertSampler.sol";
 interface IKyberDmmFactory {
 
     function getPoolAtIndex(address token0, address token1, uint256 index)
@@ -28,27 +30,29 @@ interface IKyberDmmFactory {
         returns (address);
 }
 
-interface IKyberDmmRouter {
 
-    function factory() external view returns (address);
-
-    function getAmountsOut(uint256 amountIn, address[] calldata pools, address[] calldata path)
-        external
-        view
-        returns (uint256[] memory amounts);
-
-    function getAmountsIn(uint256 amountOut, address[] calldata pools, address[] calldata path)
-        external
-        view
-        returns (uint256[] memory amounts);
-}
-
-
-
-contract KyberDmmSampler
+contract KyberDmmSampler is
+    MixinKyberDmm,
+    SwapRevertSampler
 {
     /// @dev Gas limit for KyberDmm calls.
     uint256 constant private KYBER_DMM_CALL_GAS = 150e3; // 150k
+
+    function sampleSwapFromKyberDmm(
+        address sellToken,
+        address buyToken,
+        bytes memory bridgeData,
+        uint256 takerTokenAmount
+    )
+        external
+        returns (uint256)
+    {
+        return _tradeKyberDmm(
+            IERC20TokenV06(buyToken),
+            takerTokenAmount,
+            bridgeData
+        );
+    }
 
     /// @dev Sample sell quotes from KyberDmm.
     /// @param router Router to look up tokens and amounts
@@ -63,32 +67,23 @@ contract KyberDmmSampler
         uint256[] memory takerTokenAmounts
     )
         public
-        view
         returns (address[] memory pools, uint256[] memory makerTokenAmounts)
     {
-        uint256 numSamples = takerTokenAmounts.length;
-        makerTokenAmounts = new uint256[](numSamples);
+        uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
             return (pools, makerTokenAmounts);
         }
-        for (uint256 i = 0; i < numSamples; i++) {
-            try
-                IKyberDmmRouter(router).getAmountsOut
-                    {gas: KYBER_DMM_CALL_GAS}
-                    (takerTokenAmounts[i], pools, path)
-                returns (uint256[] memory amounts)
-            {
-                makerTokenAmounts[i] = amounts[path.length - 1];
-                // Break early if there are 0 amounts
-                if (makerTokenAmounts[i] == 0) {
-                    break;
-                }
-            } catch (bytes memory) {
-                // Swallow failures, leaving all results as zero.
-                break;
-            }
-        }
+
+        (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
+            SwapRevertSamplerQuoteOpts({
+                sellToken: path[0],
+                buyToken: path[path.length - 1],
+                bridgeData: abi.encode(router, pools, path),
+                getSwapQuoteCallback: this.sampleSwapFromKyberDmm
+            }),
+            takerTokenAmounts
+        );
     }
 
     /// @dev Sample buy quotes from KyberDmm.
@@ -104,32 +99,29 @@ contract KyberDmmSampler
         uint256[] memory makerTokenAmounts
     )
         public
-        view
         returns (address[] memory pools, uint256[] memory takerTokenAmounts)
     {
-        uint256 numSamples = makerTokenAmounts.length;
-        takerTokenAmounts = new uint256[](numSamples);
+        uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
             return (pools, takerTokenAmounts);
         }
-        for (uint256 i = 0; i < numSamples; i++) {
-            try
-                IKyberDmmRouter(router).getAmountsIn
-                    {gas: KYBER_DMM_CALL_GAS}
-                    (makerTokenAmounts[i], pools, path)
-                returns (uint256[] memory amounts)
-            {
-                takerTokenAmounts[i] = amounts[0];
-                // Break early if there are 0 amounts
-                if (takerTokenAmounts[i] == 0) {
-                    break;
-                }
-            } catch (bytes memory) {
-                // Swallow failures, leaving all results as zero.
-                break;
-            }
+
+        address[] memory reversedPath = new address[](path.length);
+        for (uint256 i = 0; i < path.length; ++i) {
+            reversedPath[i] = path[path.length - i - 1];
         }
+        address[] memory reversedPools = _getKyberDmmPools(router, reversedPath);
+        (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
+            SwapRevertSamplerBuyQuoteOpts({
+                sellToken: path[0],
+                buyToken: path[path.length - 1],
+                sellTokenData: abi.encode(router, pools, path),
+                buyTokenData: abi.encode(router, reversedPools, reversedPath),
+                getSwapQuoteCallback: this.sampleSwapFromKyberDmm
+            }),
+            makerTokenAmounts
+        );
     }
 
     function _getKyberDmmPools(

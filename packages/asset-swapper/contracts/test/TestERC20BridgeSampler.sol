@@ -127,7 +127,6 @@ contract FailTrigger {
 
 
 contract TestERC20BridgeSamplerUniswapExchange is
-    IUniswapExchangeQuotes,
     TestDeploymentConstants,
     FailTrigger
 {
@@ -145,7 +144,6 @@ contract TestERC20BridgeSamplerUniswapExchange is
     function getEthToTokenInputPrice(
         uint256 ethSold
     )
-        override
         external
         view
         returns (uint256 tokensBought)
@@ -163,7 +161,6 @@ contract TestERC20BridgeSamplerUniswapExchange is
     function getEthToTokenOutputPrice(
         uint256 tokensBought
     )
-        override
         external
         view
         returns (uint256 ethSold)
@@ -181,7 +178,6 @@ contract TestERC20BridgeSamplerUniswapExchange is
     function getTokenToEthInputPrice(
         uint256 tokensSold
     )
-        override
         external
         view
         returns (uint256 ethBought)
@@ -199,7 +195,6 @@ contract TestERC20BridgeSamplerUniswapExchange is
     function getTokenToEthOutputPrice(
         uint256 ethBought
     )
-        override
         external
         view
         returns (uint256 tokensSold)
@@ -427,39 +422,10 @@ contract TestERC20BridgeSamplerEth2Dai is
 }
 
 
-contract TestERC20BridgeSamplerUniswapExchangeFactory is
-    IUniswapExchangeFactory
-{
-    mapping (address => IUniswapExchangeQuotes) private _exchangesByToken;
-
-    // Creates Uniswap exchange contracts for tokens.
-    function createTokenExchanges(address[] calldata tokenAddresses)
-        external
-    {
-        for (uint256 i = 0; i < tokenAddresses.length; i++) {
-            address tokenAddress = tokenAddresses[i];
-            _exchangesByToken[tokenAddress] =
-                new TestERC20BridgeSamplerUniswapExchange(tokenAddress);
-        }
-    }
-
-    // `IUniswapExchangeFactory.getExchange()`.
-    function getExchange(address tokenAddress)
-        override
-        external
-        view
-        returns (address)
-    {
-        return address(_exchangesByToken[tokenAddress]);
-    }
-}
-
-
 contract TestERC20BridgeSampler is
     ERC20BridgeSampler,
     FailTrigger
 {
-    TestERC20BridgeSamplerUniswapExchangeFactory public uniswap;
     TestERC20BridgeSamplerUniswapV2Router01 public uniswapV2Router;
     TestERC20BridgeSamplerEth2Dai public eth2Dai;
     TestERC20BridgeSamplerKyberNetwork public kyber;
@@ -467,7 +433,6 @@ contract TestERC20BridgeSampler is
     uint8 private constant MAX_ORDER_STATUS = uint8(IExchange.OrderStatus.CANCELLED) + 1;
 
     constructor() public ERC20BridgeSampler(IEtherTokenV06(address(0))) {
-        uniswap = new TestERC20BridgeSamplerUniswapExchangeFactory();
         uniswapV2Router = new TestERC20BridgeSamplerUniswapV2Router01();
         eth2Dai = new TestERC20BridgeSamplerEth2Dai();
         kyber = new TestERC20BridgeSamplerKyberNetwork();
@@ -477,7 +442,6 @@ contract TestERC20BridgeSampler is
     function createTokenExchanges(address[] calldata tokenAddresses)
         external
     {
-        uniswap.createTokenExchanges(tokenAddresses);
     }
 
     // Overridden to return deterministic states.

@@ -52,7 +52,6 @@ import {
     BancorFillData,
     BatchedOperation,
     CurveFillData,
-    CurveInfo,
     DexSample,
     DODOFillData,
     ERC20BridgeSource,
@@ -315,15 +314,12 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<GenericRouterFillData> {
-        // Uniswap uses ETH instead of WETH, represented by address(0)
-        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
-        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
             fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswap,
-            params: [router, uniswapTakerToken, uniswapMakerToken, takerFillAmounts],
+            params: [router, takerToken, makerToken, takerFillAmounts],
         });
     }
 
@@ -333,15 +329,12 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<GenericRouterFillData> {
-        // Uniswap uses ETH instead of WETH, represented by address(0)
-        const uniswapTakerToken = takerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : takerToken;
-        const uniswapMakerToken = makerToken === NATIVE_FEE_TOKEN_BY_CHAIN_ID[this.chainId] ? NULL_ADDRESS : makerToken;
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
             fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswap,
-            params: [router, uniswapTakerToken, uniswapMakerToken, makerFillAmounts],
+            params: [router, takerToken, makerToken, makerFillAmounts],
         });
     }
 
@@ -362,7 +355,7 @@ export class SamplerOperations {
                     'sampleSellsFromUniswapV2',
                     callResults,
                 );
-                console.log(source, tokenAddressPath, { gasUsed: gasUsed.map(g => g.toString(10)), samples });
+                console.log(source, tokenAddressPath, { gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -385,7 +378,7 @@ export class SamplerOperations {
                     'sampleBuysFromUniswapV2',
                     callResults,
                 );
-                console.log(source, tokenAddressPath, { gasUsed: gasUsed.map(g => g.toString(10)), samples });
+                console.log(source, tokenAddressPath, { gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -494,11 +487,7 @@ export class SamplerOperations {
                 console.log({
                     source,
                     fillData,
-                    samples,
                     gasUsed: gasUsed.map(g => g.toString(10)),
-                    makerToken,
-                    takerToken,
-                    callResults,
                 });
                 return samples;
             },
@@ -543,62 +532,6 @@ export class SamplerOperations {
         });
     }
 
-    public getSmoothySellQuotes(
-        pool: CurveInfo,
-        fromTokenIdx: number,
-        toTokenIdx: number,
-        takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<CurveFillData> {
-        return new SamplerContractOperation({
-            source: ERC20BridgeSource.Smoothy,
-            fillData: {
-                pool,
-                fromTokenIdx,
-                toTokenIdx,
-            },
-            contract: this._samplerContract,
-            function: this._samplerContract.sampleSellsFromSmoothy,
-            params: [
-                {
-                    poolAddress: pool.poolAddress,
-                    sellQuoteFunctionSelector: pool.sellQuoteFunctionSelector,
-                    buyQuoteFunctionSelector: pool.buyQuoteFunctionSelector,
-                },
-                new BigNumber(fromTokenIdx),
-                new BigNumber(toTokenIdx),
-                takerFillAmounts,
-            ],
-        });
-    }
-
-    public getSmoothyBuyQuotes(
-        pool: CurveInfo,
-        fromTokenIdx: number,
-        toTokenIdx: number,
-        makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<CurveFillData> {
-        return new SamplerContractOperation({
-            source: ERC20BridgeSource.Smoothy,
-            fillData: {
-                pool,
-                fromTokenIdx,
-                toTokenIdx,
-            },
-            contract: this._samplerContract,
-            function: this._samplerContract.sampleBuysFromSmoothy,
-            params: [
-                {
-                    poolAddress: pool.poolAddress,
-                    sellQuoteFunctionSelector: pool.sellQuoteFunctionSelector,
-                    buyQuoteFunctionSelector: pool.buyQuoteFunctionSelector,
-                },
-                new BigNumber(fromTokenIdx),
-                new BigNumber(toTokenIdx),
-                makerFillAmounts,
-            ],
-        });
-    }
-
     public getBalancerV2SellQuotes(
         poolInfo: BalancerV2PoolInfo,
         makerToken: string,
@@ -612,6 +545,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, takerFillAmounts],
+            callback: (callResults: string, fillData: BalancerV2FillData): BigNumber[] => {
+                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
+                    'sampleSellsFromBalancerV2',
+                    callResults,
+                );
+                console.log({
+                    source,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
+                return samples;
+            },
         });
     }
 
@@ -628,6 +573,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, makerFillAmounts],
+            callback: (callResults: string, fillData: BalancerV2FillData): BigNumber[] => {
+                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
+                    'sampleBuysFromBalancerV2',
+                    callResults,
+                );
+                console.log({
+                    source,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
+                return samples;
+            },
         });
     }
 
@@ -644,6 +601,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancer,
             params: [poolAddress, takerToken, makerToken, takerFillAmounts],
+            callback: (callResults: string, fillData: BalancerFillData): BigNumber[] => {
+                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
+                    'sampleSellsFromBalancer',
+                    callResults,
+                );
+                console.log({
+                    source,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
+                return samples;
+            },
         });
     }
 
@@ -660,6 +629,18 @@ export class SamplerOperations {
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancer,
             params: [poolAddress, takerToken, makerToken, makerFillAmounts],
+            callback: (callResults: string, fillData: BalancerFillData): BigNumber[] => {
+                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
+                    'sampleBuysFromBalancer',
+                    callResults,
+                );
+                console.log({
+                    source,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
+                return samples;
+            },
         });
     }
 
@@ -706,11 +687,16 @@ export class SamplerOperations {
             function: this._samplerContract.sampleSellsFromBancor,
             params: [{ registry, paths }, takerToken, makerToken, takerFillAmounts],
             callback: (callResults: string, fillData: BancorFillData): BigNumber[] => {
-                const [networkAddress, path, samples] = this._samplerContract.getABIDecodedReturnData<
-                    [string, string[], BigNumber[]]
+                const [networkAddress, path, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [string, string[], BigNumber[], BigNumber[]]
                 >('sampleSellsFromBancor', callResults);
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
+                console.log({
+                    source: ERC20BridgeSource.Bancor,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
                 return samples;
             },
         });
@@ -804,18 +790,24 @@ export class SamplerOperations {
             source,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswapV3,
-            params: [quoter, tokenAddressPath, takerFillAmounts],
+            params: [quoter, router, tokenAddressPath, takerFillAmounts],
             callback: (callResults: string, fillData: UniswapV3FillData): BigNumber[] => {
-                const [paths, samples] = this._samplerContract.getABIDecodedReturnData<[string[], BigNumber[]]>(
-                    'sampleSellsFromUniswapV3',
-                    callResults,
-                );
+                console.log(callResults);
+                const [paths, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [string[], BigNumber[], BigNumber[]]
+                >('sampleSellsFromUniswapV3', callResults);
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
                 fillData.pathAmounts = paths.map((uniswapPath, i) => ({
                     uniswapPath,
                     inputAmount: takerFillAmounts[i],
                 }));
+                console.log({
+                    source: ERC20BridgeSource.UniswapV3,
+                    gasUsed,
+                    pathAmounts: fillData.pathAmounts,
+                    path: tokenAddressPath,
+                });
                 return samples;
             },
         });
@@ -832,12 +824,11 @@ export class SamplerOperations {
             source,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswapV3,
-            params: [quoter, tokenAddressPath, makerFillAmounts],
+            params: [quoter, router, tokenAddressPath, makerFillAmounts],
             callback: (callResults: string, fillData: UniswapV3FillData): BigNumber[] => {
-                const [paths, samples] = this._samplerContract.getABIDecodedReturnData<[string[], BigNumber[]]>(
-                    'sampleBuysFromUniswapV3',
-                    callResults,
-                );
+                const [paths, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [string[], BigNumber[], BigNumber[]]
+                >('sampleBuysFromUniswapV3', callResults);
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
                 fillData.pathAmounts = paths.map((uniswapPath, i) => ({
@@ -1022,12 +1013,17 @@ export class SamplerOperations {
             function: this._samplerContract.sampleSellsFromDODO,
             params: [opts, takerToken, makerToken, takerFillAmounts],
             callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
-                const [isSellBase, pool, samples] = this._samplerContract.getABIDecodedReturnData<
-                    [boolean, string, BigNumber[]]
+                const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODO', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
+                console.log({
+                    source: ERC20BridgeSource.Dodo,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
                 return samples;
             },
         });
@@ -1045,12 +1041,17 @@ export class SamplerOperations {
             function: this._samplerContract.sampleBuysFromDODO,
             params: [opts, takerToken, makerToken, makerFillAmounts],
             callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
-                const [isSellBase, pool, samples] = this._samplerContract.getABIDecodedReturnData<
-                    [boolean, string, BigNumber[]]
+                const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleBuysFromDODO', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
+                console.log({
+                    source: ERC20BridgeSource.Dodo,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
                 return samples;
             },
         });
@@ -1069,11 +1070,16 @@ export class SamplerOperations {
             function: this._samplerContract.sampleSellsFromDODOV2,
             params: [registry, offset, takerToken, makerToken, takerFillAmounts],
             callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
-                const [isSellBase, pool, samples] = this._samplerContract.getABIDecodedReturnData<
-                    [boolean, string, BigNumber[]]
+                const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
+                console.log({
+                    source: ERC20BridgeSource.DodoV2,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
                 return samples;
             },
         });
@@ -1092,11 +1098,16 @@ export class SamplerOperations {
             function: this._samplerContract.sampleBuysFromDODOV2,
             params: [registry, offset, takerToken, makerToken, makerFillAmounts],
             callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
-                const [isSellBase, pool, samples] = this._samplerContract.getABIDecodedReturnData<
-                    [boolean, string, BigNumber[]]
+                const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
+                    [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
+                console.log({
+                    source: ERC20BridgeSource.DodoV2,
+                    fillData,
+                    gasUsed: gasUsed.map(g => g.toString(10)),
+                });
                 return samples;
             },
         });
@@ -1308,17 +1319,9 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Ellipsis:
                         case ERC20BridgeSource.Saddle:
                         case ERC20BridgeSource.XSigma:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
-                                this.getCurveSellQuotes(pool, makerToken, takerToken, takerFillAmounts, source),
-                            );
                         case ERC20BridgeSource.Smoothy:
                             return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
-                                this.getSmoothySellQuotes(
-                                    pool,
-                                    pool.tokens.indexOf(takerToken),
-                                    pool.tokens.indexOf(makerToken),
-                                    takerFillAmounts,
-                                ),
+                                this.getCurveSellQuotes(pool, makerToken, takerToken, takerFillAmounts, source),
                             );
                         case ERC20BridgeSource.Shell:
                         case ERC20BridgeSource.Component:
@@ -1561,17 +1564,9 @@ export class SamplerOperations {
                         case ERC20BridgeSource.Ellipsis:
                         case ERC20BridgeSource.Saddle:
                         case ERC20BridgeSource.XSigma:
-                            return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
-                                this.getCurveBuyQuotes(pool, makerToken, takerToken, makerFillAmounts, source),
-                            );
                         case ERC20BridgeSource.Smoothy:
                             return getCurveLikeInfosForPair(this.chainId, takerToken, makerToken, source).map(pool =>
-                                this.getSmoothyBuyQuotes(
-                                    pool,
-                                    pool.tokens.indexOf(takerToken),
-                                    pool.tokens.indexOf(makerToken),
-                                    makerFillAmounts,
-                                ),
+                                this.getCurveBuyQuotes(pool, makerToken, takerToken, makerFillAmounts, source),
                             );
                         case ERC20BridgeSource.Shell:
                         case ERC20BridgeSource.Component:
