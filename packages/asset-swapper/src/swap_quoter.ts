@@ -380,6 +380,8 @@ export class SwapQuoter {
             );
         }
 
+        calcOpts.gasPrice = gasPrice;
+
         const result: OptimizerResultWithReport = await this._marketOperationUtils.getOptimizerResultAsync(
             nativeOrders,
             assetFillAmount,

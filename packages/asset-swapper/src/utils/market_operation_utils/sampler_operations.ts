@@ -88,6 +88,8 @@ export const BATCH_SOURCE_FILTERS = SourceFilters.all().exclude([ERC20BridgeSour
 
 // tslint:disable:no-inferred-empty-object-type no-unbound-method
 
+// const _log = (args: any) => console.log(args);
+const _log = (args: any) => {};
 /**
  * Composable operations that can be batched in a single transaction,
  * for use with `DexOrderSampler.executeAsync()`.
@@ -231,7 +233,8 @@ export class SamplerOperations {
                 fillData.hint = hint;
                 fillData.reserveId = reserveId;
                 fillData.networkProxy = kyberOpts.networkProxy;
-                console.log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return isAllowedKyberReserveId(reserveId) ? samples : [];
             },
         });
@@ -256,7 +259,8 @@ export class SamplerOperations {
                 fillData.hint = hint;
                 fillData.reserveId = reserveId;
                 fillData.networkProxy = kyberOpts.networkProxy;
-                console.log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return isAllowedKyberReserveId(reserveId) ? samples : [];
             },
         });
@@ -279,7 +283,8 @@ export class SamplerOperations {
                 fillData.poolsPath = pools;
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
-                console.log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -302,7 +307,8 @@ export class SamplerOperations {
                 fillData.poolsPath = pools;
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
-                console.log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -316,7 +322,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswap,
             params: [router, takerToken, makerToken, takerFillAmounts],
@@ -325,7 +331,8 @@ export class SamplerOperations {
                     'sampleSellsFromUniswap',
                     callResults,
                 );
-                console.log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -339,7 +346,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswap,
             params: [router, takerToken, makerToken, makerFillAmounts],
@@ -348,7 +355,8 @@ export class SamplerOperations {
                     'sampleBuysFromUniswap',
                     callResults,
                 );
-                console.log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -362,7 +370,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<UniswapV2FillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { tokenAddressPath, router },
+            fillData: { tokenAddressPath, router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswapV2,
             params: [router, tokenAddressPath, takerFillAmounts],
@@ -371,7 +379,8 @@ export class SamplerOperations {
                     'sampleSellsFromUniswapV2',
                     callResults,
                 );
-                console.log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -385,7 +394,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<UniswapV2FillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { tokenAddressPath, router },
+            fillData: { tokenAddressPath, router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswapV2,
             params: [router, tokenAddressPath, makerFillAmounts],
@@ -394,7 +403,8 @@ export class SamplerOperations {
                     'sampleBuysFromUniswapV2',
                     callResults,
                 );
-                console.log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
+                fillData.gasUsed = gasUsed;
+                _log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
         });
@@ -412,6 +422,7 @@ export class SamplerOperations {
             fillData: {
                 poolAddress: providerAddress,
                 gasCost,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromLiquidityProvider,
@@ -421,7 +432,8 @@ export class SamplerOperations {
                     'sampleSellsFromLiquidityProvider',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.LiquidityProvider,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -443,6 +455,7 @@ export class SamplerOperations {
             fillData: {
                 poolAddress: providerAddress,
                 gasCost,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromLiquidityProvider,
@@ -452,7 +465,8 @@ export class SamplerOperations {
                     'sampleBuysFromLiquidityProvider',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.LiquidityProvider,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -470,7 +484,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Eth2Dai,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromEth2Dai,
             params: [router, takerToken, makerToken, takerFillAmounts],
@@ -479,7 +493,8 @@ export class SamplerOperations {
                     'sampleSellsFromEth2Dai',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Eth2Dai,
                     gasUsed: gasUsed.map(g => g.toString(10)),
                 });
@@ -496,7 +511,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.Eth2Dai,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromEth2Dai,
             params: [router, takerToken, makerToken, makerFillAmounts],
@@ -505,7 +520,8 @@ export class SamplerOperations {
                     'sampleBuysFromEth2Dai',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Eth2Dai,
                     gasUsed: gasUsed.map(g => g.toString(10)),
                 });
@@ -527,6 +543,7 @@ export class SamplerOperations {
                 pool,
                 fromTokenIdx: pool.takerTokenIdx,
                 toTokenIdx: pool.makerTokenIdx,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromCurve,
@@ -546,7 +563,8 @@ export class SamplerOperations {
                     'sampleSellsFromCurve',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     pool: pool.poolAddress,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -569,6 +587,7 @@ export class SamplerOperations {
                 pool,
                 fromTokenIdx: pool.takerTokenIdx,
                 toTokenIdx: pool.makerTokenIdx,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromCurve,
@@ -588,7 +607,8 @@ export class SamplerOperations {
                     'sampleBuysFromCurve',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     pool: pool.poolAddress,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -607,7 +627,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<BalancerV2FillData> {
         return new SamplerContractOperation({
             source,
-            fillData: poolInfo,
+            fillData: { ...poolInfo, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, takerFillAmounts],
@@ -616,7 +636,8 @@ export class SamplerOperations {
                     'sampleSellsFromBalancerV2',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -635,7 +656,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<BalancerV2FillData> {
         return new SamplerContractOperation({
             source,
-            fillData: poolInfo,
+            fillData: { ...poolInfo, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, makerFillAmounts],
@@ -644,7 +665,8 @@ export class SamplerOperations {
                     'sampleBuysFromBalancerV2',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -663,7 +685,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<BalancerFillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { poolAddress },
+            fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancer,
             params: [poolAddress, takerToken, makerToken, takerFillAmounts],
@@ -672,7 +694,8 @@ export class SamplerOperations {
                     'sampleSellsFromBalancer',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -691,7 +714,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<BalancerFillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { poolAddress },
+            fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancer,
             params: [poolAddress, takerToken, makerToken, makerFillAmounts],
@@ -700,7 +723,8 @@ export class SamplerOperations {
                     'sampleBuysFromBalancer',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -718,7 +742,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.MStable,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMStable,
             params: [router, takerToken, makerToken, takerFillAmounts],
@@ -727,7 +751,8 @@ export class SamplerOperations {
                     'sampleSellsFromMStable',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.MStable,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -745,7 +770,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<GenericRouterFillData> {
         return new SamplerContractOperation({
             source: ERC20BridgeSource.MStable,
-            fillData: { router },
+            fillData: { router, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMStable,
             params: [router, takerToken, makerToken, makerFillAmounts],
@@ -754,7 +779,8 @@ export class SamplerOperations {
                     'sampleBuysFromMStable',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.MStable,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -782,7 +808,8 @@ export class SamplerOperations {
                 >('sampleSellsFromBancor', callResults);
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Bancor,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -810,7 +837,8 @@ export class SamplerOperations {
                 >('sampleBuysFromBancor', callResults);
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Bancor,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -841,7 +869,8 @@ export class SamplerOperations {
                     [string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromMooniswap', callResults);
                 fillData.poolAddress = poolAddress;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Mooniswap,
                     poolAddress,
                     gasUsed,
@@ -872,7 +901,8 @@ export class SamplerOperations {
                     [string, BigNumber[], BigNumber[]]
                 >('sampleBuysFromMooniswap', callResults);
                 fillData.poolAddress = poolAddress;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Mooniswap,
                     poolAddress,
                     gasUsed,
@@ -904,7 +934,8 @@ export class SamplerOperations {
                     uniswapPath,
                     inputAmount: takerFillAmounts[i],
                 }));
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.UniswapV3,
                     gasUsed,
                     path: tokenAddressPath,
@@ -936,6 +967,7 @@ export class SamplerOperations {
                     uniswapPath,
                     inputAmount: makerFillAmounts[i],
                 }));
+                fillData.gasUsed = gasUsed;
                 return samples;
             },
         });
@@ -1069,7 +1101,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<ShellFillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { poolAddress },
+            fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromShell,
             params: [poolAddress, takerToken, makerToken, takerFillAmounts],
@@ -1078,7 +1110,8 @@ export class SamplerOperations {
                     'sampleBuysFromShell',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Shell,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1097,7 +1130,7 @@ export class SamplerOperations {
     ): SourceQuoteOperation<ShellFillData> {
         return new SamplerContractOperation({
             source,
-            fillData: { poolAddress },
+            fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromShell,
             params: [poolAddress, takerToken, makerToken, makerFillAmounts],
@@ -1106,7 +1139,8 @@ export class SamplerOperations {
                     'sampleBuysFromShell',
                     callResults,
                 );
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Shell,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1134,7 +1168,8 @@ export class SamplerOperations {
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Dodo,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1162,7 +1197,8 @@ export class SamplerOperations {
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
-                console.log({
+                fillData.gasUsed = gasUsed;
+                _log({
                     source: ERC20BridgeSource.Dodo,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1190,7 +1226,7 @@ export class SamplerOperations {
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
-                console.log({
+                _log({
                     source: ERC20BridgeSource.DodoV2,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1218,7 +1254,7 @@ export class SamplerOperations {
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
-                console.log({
+                _log({
                     source: ERC20BridgeSource.DodoV2,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1250,7 +1286,7 @@ export class SamplerOperations {
                     'sampleSellsFromMakerPsm',
                     callResults,
                 );
-                console.log({
+                _log({
                     source: ERC20BridgeSource.MakerPsm,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -1282,7 +1318,7 @@ export class SamplerOperations {
                     'sampleBuysFromMakerPsm',
                     callResults,
                 );
-                console.log({
+                _log({
                     source: ERC20BridgeSource.MakerPsm,
                     fillData,
                     gasUsed: gasUsed.map(g => g.toString(10)),

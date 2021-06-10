@@ -483,6 +483,7 @@ export class MarketOperationUtils {
             inputAmountPerEth,
             excludedSources: opts.excludedSources,
             feeSchedule: opts.feeSchedule,
+            gasPrice: opts.gasPrice,
         });
 
         // Find the optimal path.
@@ -584,6 +585,7 @@ export class MarketOperationUtils {
             feeSchedule: _opts.feeSchedule,
             allowFallback: _opts.allowFallback,
             exchangeProxyOverhead: _opts.exchangeProxyOverhead,
+            gasPrice: _opts.gasPrice,
         };
 
         if (nativeOrders.length === 0) {
