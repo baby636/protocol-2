@@ -91,7 +91,6 @@ contract BancorSampler is
 
         (bancorNetwork, path) = _findBestPath(opts, takerToken, makerToken, takerTokenAmounts);
 
-        uint256[] memory gasUsed;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
                 sellToken: takerToken,
@@ -112,6 +111,7 @@ contract BancorSampler is
     /// @param makerTokenAmounts Maker token buy amount for each sample.
     /// @return bancorNetwork the Bancor Network address
     /// @return path the selected conversion path from bancor
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromBancor(
@@ -122,7 +122,7 @@ contract BancorSampler is
     )
         public
         view
-        returns (address bancorNetwork, address[] memory path, uint256[] memory takerTokenAmounts)
+        returns (address bancorNetwork, address[] memory path, uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
     }
 

@@ -56,6 +56,7 @@ contract UniswapSampler is
     /// @param takerToken Address of the taker token (what to sell).
     /// @param makerToken Address of the maker token (what to buy).
     /// @param takerTokenAmounts Taker token sell amount for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromUniswap(
@@ -65,9 +66,8 @@ contract UniswapSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (uint256[] memory makerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
                 sellToken: takerToken,
@@ -83,6 +83,7 @@ contract UniswapSampler is
     /// @param takerToken Address of the taker token (what to sell).
     /// @param makerToken Address of the maker token (what to buy).
     /// @param makerTokenAmounts Maker token sell amount for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromUniswap(
@@ -92,9 +93,8 @@ contract UniswapSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (uint256[] memory takerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
             SwapRevertSamplerBuyQuoteOpts({
                 sellToken: takerToken,

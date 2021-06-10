@@ -60,7 +60,7 @@ contract MakerPSMSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (uint256[] memory makerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
         uint256[] memory gasUsed;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
@@ -86,9 +86,8 @@ contract MakerPSMSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (uint256[] memory takerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         MakerPsmBridgeData memory data = MakerPsmBridgeData({
             psmAddress: psmInfo.psmAddress,
             gemTokenAddres: psmInfo.gemTokenAddress

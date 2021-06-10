@@ -23,11 +23,13 @@ pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
 import "./HackedERC20.sol";
+import "./GasOverhead.sol";
 import "@0x/contracts-erc20/contracts/src/v06/IEtherTokenV06.sol";
 import "@0x/contracts-utils/contracts/src/v06/errors/LibRichErrorsV06.sol";
 
 contract SwapRevertSampler {
     using LibRichErrorsV06 for bytes;
+    address private constant GAS_OVERHEAD = 0xDeF1000000000000000000000000000000001337;
 
     // solhint-disable no-empty-blocks
     /// @dev Payable fallback to receive ETH from Kyber/WETH.
@@ -84,20 +86,19 @@ contract SwapRevertSampler {
         // Mint enough to sell
         try
             hackedSellToken.setBalance(address(this), amountIn)
-        { } catch (bytes memory reason) { }
+        { } catch { }
 
         try
             IEtherTokenV06(payable(sellToken)).deposit{ value: amountIn }()
-        { } catch (bytes memory reason) { }
+        { } catch { }
 
         // Ensure the balance of the buyToken is 0
         try
             hackedBuyToken.setBalance(address(this), 0)
-        { } catch (bytes memory reason) { }
+        { } catch { }
 
         require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");
         require(hackedBuyToken.balanceOf(address(this)) == 0, "Balance of buyToken must be 0");
-
 
         // Burn any excess ETH to avoid balance issues for sources which use ETH directly
         address(0).transfer(address(this).balance);
@@ -109,6 +110,13 @@ contract SwapRevertSampler {
             abi.encodeWithSelector(selector, sellToken, buyToken, bridgeData, amountIn)
         );
         gasUsed = gasUsed - gasleft();
+        // Remove any registered gas overhead
+        try
+            GasOverhead(GAS_OVERHEAD).overhead()
+            returns (uint256 gasOverhead)
+        {
+            gasUsed = gasUsed - gasOverhead;
+        } catch { }
 
         if (!success) {
             data.rrevert();

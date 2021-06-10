@@ -2,6 +2,7 @@
 pragma solidity ^0.6;
 
 import "@0x/contracts-erc20/contracts/src/v06/LibERC20TokenV06.sol";
+import "./GasOverhead.sol";
 
 contract HackedERC20 {
 
@@ -19,6 +20,7 @@ contract HackedERC20 {
     }
 
     bytes32 private constant STORAGE_SLOT = 0x64fd48372774b9637ace5c8c7a951f04ea13c793935207f2eada5382a0ec82cb;
+    address private constant GAS_OVERHEAD = 0xDeF1000000000000000000000000000000001337;
 
     receive() external payable {}
 
@@ -32,7 +34,7 @@ contract HackedERC20 {
         /* view */
         returns (uint256 balance)
     {
-        ShadowedAmount memory sBal = _getSyncedBalance(owner);
+        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         return sBal.shadowedAmount;
     }
 
@@ -41,56 +43,31 @@ contract HackedERC20 {
         /* view */
         returns (uint256 allowance_)
     {
-        ShadowedAmount memory sBal = _getSyncedAllowance(owner, spender);
+        (ShadowedAmount memory sBal,) = _getSyncedAllowance(owner, spender);
         return sBal.shadowedAmount;
     }
 
     function transferFrom(address from, address to, uint256 amount)
         public
-        returns (bool)
+        returns (bool success)
     {
-        ShadowedAmount memory sAllowance = _getSyncedAllowance(from, msg.sender);
-        if (from != msg.sender && sAllowance.shadowedAmount != uint256(-1)) {
-            sAllowance.shadowedAmount = _sub(
-                sAllowance.shadowedAmount,
-                amount,
-                'HackedERC20/ALLOWANCE_UNDERFLOW'
-            );
-        }
-        _writeSyncedAllowance(from, msg.sender, sAllowance);
-
-        ShadowedAmount memory sFromBal = _getSyncedBalance(from);
-        sFromBal.shadowedAmount = _sub(
-            sFromBal.shadowedAmount,
-            amount,
-            'HackedERC20/BALANCE_UNDERFLOW'
-        );
-        _writeSyncedBalance(from, sFromBal);
-
-        ShadowedAmount memory sToBal = _getSyncedBalance(to);
-        sToBal.shadowedAmount = _add(
-            sToBal.shadowedAmount,
-            amount,
-            'HackedERC20/BALANCE_OVERFLOW'
-        );
-        _writeSyncedBalance(to, sToBal);
-
-        return true;
+        _updateAllowance(from, amount);
+        success = _transferFromInternal(from, to, amount);
     }
+
 
     function transfer(address to, uint256 amount)
         external
-        returns (bool)
+        returns (bool success)
     {
-        transferFrom(msg.sender, to, amount);
-        return true;
+        success = _transferFromInternal(msg.sender, to, amount);
     }
 
     function approve(address spender, uint256 amount)
         external
         returns (bool)
     {
-        ShadowedAmount memory sAllowance = _getSyncedAllowance(msg.sender, spender);
+        (ShadowedAmount memory sAllowance,) = _getSyncedAllowance(msg.sender, spender);
         sAllowance.shadowedAmount = amount;
         _writeSyncedAllowance(msg.sender, spender, sAllowance);
         return true;
@@ -99,7 +76,7 @@ contract HackedERC20 {
     function mint(address owner, uint256 amount)
         public
     {
-        ShadowedAmount memory sBal = _getSyncedBalance(owner);
+        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         sBal.shadowedAmount = _add(
             sBal.shadowedAmount,
             amount,
@@ -111,7 +88,7 @@ contract HackedERC20 {
     function burn(address owner, uint256 amount)
         public
     {
-        ShadowedAmount memory sBal = _getSyncedBalance(owner);
+        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         sBal.shadowedAmount = _sub(
             sBal.shadowedAmount,
             amount,
@@ -123,7 +100,7 @@ contract HackedERC20 {
     function setBalance(address owner, uint256 amount)
         public
     {
-        ShadowedAmount memory sBal = _getSyncedBalance(owner);
+        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         sBal.shadowedAmount = amount;
         _writeSyncedBalance(owner, sBal);
     }
@@ -131,7 +108,7 @@ contract HackedERC20 {
     function setAllowance(address owner, address spender, uint256 amount)
         public
     {
-        ShadowedAmount memory sAllowance = _getSyncedAllowance(owner, spender);
+        (ShadowedAmount memory sAllowance,) = _getSyncedAllowance(owner, spender);
         sAllowance.shadowedAmount = amount;
         _writeSyncedAllowance(owner, spender, sAllowance);
     }
@@ -139,9 +116,13 @@ contract HackedERC20 {
     function _getSyncedAllowance(address owner, address spender)
         private
         /* view */
-        returns (ShadowedAmount memory sAllowance)
+        returns (ShadowedAmount memory sAllowance, uint256 gasOverhead)
     {
+        uint256 gasBefore = gasleft();
         sAllowance = _getStorage().shadowedAllowances[owner][spender];
+        // We only want to measure the cost of the underlying token storage lookup
+        // Not including the excess overhead of our shadow lookup
+        uint256 _gasBefore = gasleft();
         uint256 trueAmount = abi.decode(
             _forwardCallToImpl(abi.encodeWithSelector(
                 IERC20TokenV06.allowance.selector,
@@ -150,14 +131,21 @@ contract HackedERC20 {
             )),
             (uint256)
         );
+        uint256 _trueGas = _gasBefore - gasleft();
         _syncShadowedAmount(sAllowance, trueAmount);
+        // e.g 9000 - (1000 + 3000) = 5000 overhead 
+        gasOverhead = gasBefore - (gasleft() + _trueGas);
     }
 
     function _getSyncedBalance(address owner)
         private
-        returns (ShadowedAmount memory sBal)
+        returns (ShadowedAmount memory sBal, uint256 gasOverhead)
     {
+        uint256 gasBefore = gasleft();
         sBal = _getStorage().shadowedBalances[owner];
+        // We only want to measure the cost of the underlying token storage lookup
+        // Not including the excess overhead of our shadow lookup
+        uint256 _gasBefore = gasleft();
         uint256 trueAmount = abi.decode(
             _forwardCallToImpl(abi.encodeWithSelector(
                 IERC20TokenV06.balanceOf.selector,
@@ -165,7 +153,10 @@ contract HackedERC20 {
             )),
             (uint256)
         );
+        uint256 _trueGas = _gasBefore - gasleft();
         _syncShadowedAmount(sBal, trueAmount);
+        // e.g 9000 - (1000 + 3000) = 5000 overhead 
+        gasOverhead = gasBefore - (gasleft() + _trueGas);
     }
 
     function _syncShadowedAmount(ShadowedAmount memory sAmount, uint256 trueAmount)
@@ -246,6 +237,65 @@ contract HackedERC20 {
         if (!success) {
             assembly { revert(add(resultData, 32), mload(resultData)) }
         }
+    }
+
+    function _transferFromInternal(address from, address to, uint256 amount)
+        internal
+        returns (bool)
+    {
+        ShadowedAmount memory sFromBal;
+        ShadowedAmount memory sToBal;
+        uint256 gasOverhead;
+        uint256 _gasOverhead;
+
+        (sFromBal, _gasOverhead) = _getSyncedBalance(from);
+        gasOverhead += _gasOverhead;
+        sFromBal.shadowedAmount = _sub(
+            sFromBal.shadowedAmount,
+            amount,
+            'HackedERC20/BALANCE_UNDERFLOW'
+        );
+        _writeSyncedBalance(from, sFromBal);
+
+        (sToBal, _gasOverhead) = _getSyncedBalance(to);
+        gasOverhead += _gasOverhead;
+        sToBal.shadowedAmount = _add(
+            sToBal.shadowedAmount,
+            amount,
+            'HackedERC20/BALANCE_OVERFLOW'
+        );
+        _writeSyncedBalance(to, sToBal);
+
+        // Update the global gas overhead from a transfer call
+        try
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead)
+        { } catch { }
+
+        return true;
+    }
+
+    function _updateAllowance(address from, uint256 amount)
+        internal
+    {
+        (ShadowedAmount memory sAllowance, uint256 gasOverhead) = _getSyncedAllowance(from, msg.sender);
+        if (from != msg.sender && sAllowance.shadowedAmount != uint256(-1)) {
+            sAllowance.shadowedAmount = _sub(
+                sAllowance.shadowedAmount,
+                amount,
+                'HackedERC20/ALLOWANCE_UNDERFLOW'
+            );
+            // Assume a NON MAX_UINT results in allowance update SSTORE
+            _writeSyncedAllowance(from, msg.sender, sAllowance);
+        } else {
+            // Assume a MAX_UINT results in no allowance update SSTORE
+            uint256 gasBefore = gasleft();
+            _writeSyncedAllowance(from, msg.sender, sAllowance);
+            gasOverhead = gasOverhead + (gasBefore - gasleft());
+        }
+        // Update the global gas overhead from a allowance check
+        try
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead)
+        { } catch { }
     }
 
     function _add(uint256 a, uint256 b, string memory errMsg)

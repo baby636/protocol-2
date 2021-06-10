@@ -61,6 +61,7 @@ contract MooniswapSampler is
     /// @param makerToken Address of the maker token (what to buy).
     /// @param takerTokenAmounts Taker token sell amount for each sample.
     /// @return pool The contract address for the pool
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromMooniswap(
@@ -70,9 +71,8 @@ contract MooniswapSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (address pool, uint256[] memory makerTokenAmounts)
+        returns (address pool, uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
@@ -91,6 +91,7 @@ contract MooniswapSampler is
     /// @param makerToken Address of the maker token (what to buy).
     /// @param makerTokenAmounts Maker token sell amount for each sample.
     /// @return pool The contract address for the pool
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromMooniswap(
@@ -100,9 +101,8 @@ contract MooniswapSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (address pool, uint256[] memory takerTokenAmounts)
+        returns (address pool, uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
         (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
             SwapRevertSamplerBuyQuoteOpts({

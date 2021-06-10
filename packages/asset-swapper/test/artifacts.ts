@@ -17,6 +17,7 @@ import * as DummyLiquidityProvider from '../test/generated-artifacts/DummyLiquid
 import * as ERC20BridgeSampler from '../test/generated-artifacts/ERC20BridgeSampler.json';
 import * as Eth2DaiSampler from '../test/generated-artifacts/Eth2DaiSampler.json';
 import * as FakeTaker from '../test/generated-artifacts/FakeTaker.json';
+import * as GasOverhead from '../test/generated-artifacts/GasOverhead.json';
 import * as HackedERC20 from '../test/generated-artifacts/HackedERC20.json';
 import * as IEth2Dai from '../test/generated-artifacts/IEth2Dai.json';
 import * as IKyberNetwork from '../test/generated-artifacts/IKyberNetwork.json';
@@ -51,6 +52,7 @@ export const artifacts = {
     ERC20BridgeSampler: ERC20BridgeSampler as ContractArtifact,
     Eth2DaiSampler: Eth2DaiSampler as ContractArtifact,
     FakeTaker: FakeTaker as ContractArtifact,
+    GasOverhead: GasOverhead as ContractArtifact,
     HackedERC20: HackedERC20 as ContractArtifact,
     KyberDmmSampler: KyberDmmSampler as ContractArtifact,
     KyberSampler: KyberSampler as ContractArtifact,

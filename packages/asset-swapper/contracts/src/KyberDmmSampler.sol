@@ -59,6 +59,7 @@ contract KyberDmmSampler is
     /// @param path Token route. Should be takerToken -> makerToken
     /// @param takerTokenAmounts Taker token sell amount for each sample.
     /// @return pools The pool addresses involved in the multi path trade
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromKyberDmm(
@@ -67,12 +68,12 @@ contract KyberDmmSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (address[] memory pools, uint256[] memory makerTokenAmounts)
+        returns (address[] memory pools, uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
         uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
-            return (pools, makerTokenAmounts);
+            return (pools, gasUsed, makerTokenAmounts);
         }
 
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
@@ -91,6 +92,7 @@ contract KyberDmmSampler is
     /// @param path Token route. Should be takerToken -> makerToken.
     /// @param makerTokenAmounts Maker token buy amount for each sample.
     /// @return pools The pool addresses involved in the multi path trade
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromKyberDmm(
@@ -99,12 +101,12 @@ contract KyberDmmSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (address[] memory pools, uint256[] memory takerTokenAmounts)
+        returns (address[] memory pools, uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
         uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
-            return (pools, takerTokenAmounts);
+            return (pools, gasUsed, takerTokenAmounts);
         }
 
         address[] memory reversedPath = new address[](path.length);

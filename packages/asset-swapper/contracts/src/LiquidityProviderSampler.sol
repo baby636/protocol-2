@@ -51,6 +51,7 @@ contract LiquidityProviderSampler is
     /// @param takerToken Address of the taker token (what to sell).
     /// @param makerToken Address of the maker token (what to buy).
     /// @param takerTokenAmounts Taker token sell amount for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return makerTokenAmounts Maker amounts bought at each taker token
     ///         amount.
     function sampleSellsFromLiquidityProvider(
@@ -60,9 +61,8 @@ contract LiquidityProviderSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (uint256[] memory makerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         bytes memory lpData;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
@@ -80,6 +80,7 @@ contract LiquidityProviderSampler is
     /// @param takerToken Address of the taker token (what to sell).
     /// @param makerToken Address of the maker token (what to buy).
     /// @param makerTokenAmounts Maker token buy amount for each sample.
+    /// @return gasUsed gas consumed in each sample sell
     /// @return takerTokenAmounts Taker amounts sold at each maker token
     ///         amount.
     function sampleBuysFromLiquidityProvider(
@@ -89,9 +90,8 @@ contract LiquidityProviderSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (uint256[] memory takerTokenAmounts)
+        returns (uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         bytes memory lpData;
         (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
             SwapRevertSamplerBuyQuoteOpts({

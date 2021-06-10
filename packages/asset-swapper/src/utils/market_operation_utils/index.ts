@@ -784,6 +784,10 @@ export class MarketOperationUtils {
             overrides[tokenImplAddress] = { code: tokenCodes[i] };
         });
 
+        // Also set the gas overhead counter to a known address
+        const gasOverhead = _.get(artifacts.GasOverhead, 'compilerOutput.evm.deployedBytecode.object');
+        overrides['0xDeF1000000000000000000000000000000001337'] = { code: gasOverhead };
+
         return { overrides };
     }
 }

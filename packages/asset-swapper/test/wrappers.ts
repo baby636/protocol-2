@@ -15,6 +15,7 @@ export * from '../test/generated-wrappers/dummy_liquidity_provider';
 export * from '../test/generated-wrappers/erc20_bridge_sampler';
 export * from '../test/generated-wrappers/eth2_dai_sampler';
 export * from '../test/generated-wrappers/fake_taker';
+export * from '../test/generated-wrappers/gas_overhead';
 export * from '../test/generated-wrappers/hacked_erc20';
 export * from '../test/generated-wrappers/i_eth2_dai';
 export * from '../test/generated-wrappers/i_kyber_network';
