@@ -62,7 +62,6 @@ contract MakerPSMSampler is
         public
         returns (uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
-        uint256[] memory gasUsed;
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
                 sellToken: takerToken,

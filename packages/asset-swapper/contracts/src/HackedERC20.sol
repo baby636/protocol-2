@@ -67,9 +67,18 @@ contract HackedERC20 {
         external
         returns (bool)
     {
-        (ShadowedAmount memory sAllowance,) = _getSyncedAllowance(msg.sender, spender);
+        (
+            ShadowedAmount memory sAllowance,
+            uint256 gasOverhead
+        ) = _getSyncedAllowance(msg.sender, spender);
+
         sAllowance.shadowedAmount = amount;
         _writeSyncedAllowance(msg.sender, spender, sAllowance);
+
+        // Update the global gas overhead from a approval sync
+        try
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
+        { } catch { }
         return true;
     }
 
@@ -105,6 +114,14 @@ contract HackedERC20 {
         _writeSyncedBalance(owner, sBal);
     }
 
+    function setBleh(address owner, uint256 amount)
+        public
+    {
+        ShadowedAmount memory sBal = _getStorage().shadowedBalances[owner];
+        sBal.shadowedAmount = amount;
+        _writeSyncedBalance(owner, sBal);
+    }
+
     function setAllowance(address owner, address spender, uint256 amount)
         public
     {
@@ -118,11 +135,6 @@ contract HackedERC20 {
         /* view */
         returns (ShadowedAmount memory sAllowance, uint256 gasOverhead)
     {
-        uint256 gasBefore = gasleft();
-        sAllowance = _getStorage().shadowedAllowances[owner][spender];
-        // We only want to measure the cost of the underlying token storage lookup
-        // Not including the excess overhead of our shadow lookup
-        uint256 _gasBefore = gasleft();
         uint256 trueAmount = abi.decode(
             _forwardCallToImpl(abi.encodeWithSelector(
                 IERC20TokenV06.allowance.selector,
@@ -131,21 +143,18 @@ contract HackedERC20 {
             )),
             (uint256)
         );
-        uint256 _trueGas = _gasBefore - gasleft();
+        // We only want to measure the cost of the underlying token storage lookup
+        // Not including the excess overhead of our shadow lookup
+        uint256 gasBefore = gasleft();
+        sAllowance = _getStorage().shadowedAllowances[owner][spender];
         _syncShadowedAmount(sAllowance, trueAmount);
-        // e.g 9000 - (1000 + 3000) = 5000 overhead 
-        gasOverhead = gasBefore - (gasleft() + _trueGas);
+        gasOverhead = gasBefore - gasleft();
     }
 
     function _getSyncedBalance(address owner)
         private
         returns (ShadowedAmount memory sBal, uint256 gasOverhead)
     {
-        uint256 gasBefore = gasleft();
-        sBal = _getStorage().shadowedBalances[owner];
-        // We only want to measure the cost of the underlying token storage lookup
-        // Not including the excess overhead of our shadow lookup
-        uint256 _gasBefore = gasleft();
         uint256 trueAmount = abi.decode(
             _forwardCallToImpl(abi.encodeWithSelector(
                 IERC20TokenV06.balanceOf.selector,
@@ -153,10 +162,12 @@ contract HackedERC20 {
             )),
             (uint256)
         );
-        uint256 _trueGas = _gasBefore - gasleft();
+        // We only want to measure the cost of the underlying token storage lookup
+        // Not including the excess overhead of our shadow lookup
+        uint256 gasBefore = gasleft();
+        sBal = _getStorage().shadowedBalances[owner];
         _syncShadowedAmount(sBal, trueAmount);
-        // e.g 9000 - (1000 + 3000) = 5000 overhead 
-        gasOverhead = gasBefore - (gasleft() + _trueGas);
+        gasOverhead = gasBefore - gasleft();
     }
 
     function _syncShadowedAmount(ShadowedAmount memory sAmount, uint256 trueAmount)
@@ -268,7 +279,7 @@ contract HackedERC20 {
 
         // Update the global gas overhead from a transfer call
         try
-            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead)
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
         { } catch { }
 
         return true;
@@ -294,7 +305,7 @@ contract HackedERC20 {
         }
         // Update the global gas overhead from a allowance check
         try
-            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead)
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
         { } catch { }
     }
 

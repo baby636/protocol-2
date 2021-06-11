@@ -103,6 +103,10 @@ contract SwapRevertSampler {
         // Burn any excess ETH to avoid balance issues for sources which use ETH directly
         address(0).transfer(address(this).balance);
 
+        // Clear any registered overhead
+        try
+            GasOverhead(GAS_OVERHEAD).clearOverhead()
+        { } catch { }
         // Measure the gas
         uint256 gasUsed = gasleft();
         // Perform the sell

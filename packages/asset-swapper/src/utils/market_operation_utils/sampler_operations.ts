@@ -88,8 +88,8 @@ export const BATCH_SOURCE_FILTERS = SourceFilters.all().exclude([ERC20BridgeSour
 
 // tslint:disable:no-inferred-empty-object-type no-unbound-method
 
-// const _log = (args: any) => console.log(args);
-const _log = (args: any) => {};
+const _log = (args: any) => console.log(args);
+// const _log = (args: any) => {};
 /**
  * Composable operations that can be batched in a single transaction,
  * for use with `DexOrderSampler.executeAsync()`.
@@ -162,6 +162,7 @@ export class SamplerOperations {
             },
         };
     }
+
     public getBalanceOf(tokens: string[], address: string): BatchedOperation<BigNumber[]> {
         return {
             encodeCall: () => this._samplerContract.getBalanceOf(tokens, address).getABIEncodedTransactionData(),
@@ -170,6 +171,18 @@ export class SamplerOperations {
             handleRevert: () => {
                 /* should never happen */
                 throw new Error('balanceOf reverted');
+            },
+        };
+    }
+
+    public doSomething(token: string): BatchedOperation<BigNumber> {
+        return {
+            encodeCall: () => this._samplerContract.doSomething(token).getABIEncodedTransactionData(),
+            handleCallResults: (callResults: string) =>
+                this._samplerContract.getABIDecodedReturnData<BigNumber>('doSomething', callResults),
+            handleRevert: () => {
+                /* should never happen */
+                throw new Error('doSomething reverted');
             },
         };
     }

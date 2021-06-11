@@ -68,9 +68,12 @@ contract KyberDmmSampler is
         uint256[] memory takerTokenAmounts
     )
         public
-        returns (address[] memory pools, uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
+        returns (
+            address[] memory pools,
+            uint256[] memory gasUsed,
+            uint256[] memory makerTokenAmounts
+        )
     {
-        uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
             return (pools, gasUsed, makerTokenAmounts);
@@ -101,9 +104,12 @@ contract KyberDmmSampler is
         uint256[] memory makerTokenAmounts
     )
         public
-        returns (address[] memory pools, uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
+        returns (
+            address[] memory pools,
+            uint256[] memory gasUsed,
+            uint256[] memory takerTokenAmounts
+        )
     {
-        uint256[] memory gasUsed;
         pools = _getKyberDmmPools(router, path);
         if (pools.length == 0) {
             return (pools, gasUsed, takerTokenAmounts);
