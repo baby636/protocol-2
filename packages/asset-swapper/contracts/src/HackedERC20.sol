@@ -82,52 +82,12 @@ contract HackedERC20 {
         return true;
     }
 
-    function mint(address owner, uint256 amount)
-        public
-    {
-        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
-        sBal.shadowedAmount = _add(
-            sBal.shadowedAmount,
-            amount,
-            'HackedERC20/MINT_OVERFLOW'
-        );
-        _writeSyncedBalance(owner, sBal);
-    }
-
-    function burn(address owner, uint256 amount)
-        public
-    {
-        (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
-        sBal.shadowedAmount = _sub(
-            sBal.shadowedAmount,
-            amount,
-            'HackedERC20/BURN_UNDERFLOW'
-        );
-        _writeSyncedBalance(owner, sBal);
-    }
-
-    function setBalance(address owner, uint256 amount)
+    function _setBalance(address owner, uint256 amount)
         public
     {
         (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         sBal.shadowedAmount = amount;
         _writeSyncedBalance(owner, sBal);
-    }
-
-    function setBleh(address owner, uint256 amount)
-        public
-    {
-        ShadowedAmount memory sBal = _getStorage().shadowedBalances[owner];
-        sBal.shadowedAmount = amount;
-        _writeSyncedBalance(owner, sBal);
-    }
-
-    function setAllowance(address owner, address spender, uint256 amount)
-        public
-    {
-        (ShadowedAmount memory sAllowance,) = _getSyncedAllowance(owner, spender);
-        sAllowance.shadowedAmount = amount;
-        _writeSyncedAllowance(owner, spender, sAllowance);
     }
 
     function _getSyncedAllowance(address owner, address spender)

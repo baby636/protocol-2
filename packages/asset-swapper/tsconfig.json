@@ -8,7 +8,6 @@
         "generated-artifacts/FakeTaker.json",
         "generated-artifacts/GasOverhead.json",
         "generated-artifacts/HackedERC20.json",
-        "test/generated-artifacts/ApproximateBuys.json",
         "test/generated-artifacts/BalanceChecker.json",
         "test/generated-artifacts/BalancerSampler.json",
         "test/generated-artifacts/BalancerV2Sampler.json",

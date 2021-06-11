@@ -85,7 +85,7 @@ contract SwapRevertSampler {
 
         // Mint enough to sell
         try
-            hackedSellToken.setBalance(address(this), amountIn)
+            hackedSellToken._setBalance(address(this), amountIn)
         { } catch { }
 
         try
@@ -94,7 +94,7 @@ contract SwapRevertSampler {
 
         // Ensure the balance of the buyToken is 0
         try
-            hackedBuyToken.setBalance(address(this), 0)
+            hackedBuyToken._setBalance(address(this), 0)
         { } catch { }
 
         require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");

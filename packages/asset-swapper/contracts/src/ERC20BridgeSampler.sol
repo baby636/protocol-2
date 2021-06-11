@@ -43,9 +43,6 @@ import "./UtilitySampler.sol";
 
 import "@0x/contracts-erc20/contracts/src/v06/IEtherTokenV06.sol";
 
-import "./GasOverhead.sol";
-
-
 contract ERC20BridgeSampler is
     BalancerSampler,
     BalancerV2Sampler,
@@ -99,16 +96,5 @@ contract ERC20BridgeSampler is
             }
             (callResults[i].success, callResults[i].data) = address(this).call(callDatas[i]);
         }
-    }
-
-    function doSomething(address token)
-        external
-        returns (uint256 gasUsed)
-    {
-        uint256 gasBefore = gasleft();
-        try
-            GasOverhead(0xDeF1000000000000000000000000000000001337).clearOverhead()
-        { } catch { }
-        gasUsed = gasBefore - gasleft();
     }
 }

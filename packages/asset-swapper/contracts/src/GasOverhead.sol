@@ -2,7 +2,7 @@
 pragma solidity ^0.6;
 
 contract GasOverhead {
-    uint256 public _overhead = 1;
+    uint256 public _overhead = 0;
     // Overhead incurred from updating the overhead storage slot
     uint256 constant SSTORE_OVERHEAD = 20000;
 
@@ -17,7 +17,7 @@ contract GasOverhead {
     function clearOverhead()
         external
     {
-        _overhead = 1;
+        _overhead = 0;
     }
 
     function overhead()

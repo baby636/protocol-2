@@ -457,14 +457,4 @@ contract TestERC20BridgeSampler is
     {
         return uint256(keccak256(abi.encode(order.salt))) % order.takerAmount;
     }
-
-    // Overriden to return deterministic decimals.
-    function _getTokenDecimals(address tokenAddress)
-        override
-        internal
-        view
-        returns (uint8 decimals)
-    {
-        return LibDeterministicQuotes.getDeterministicTokenDecimals(tokenAddress);
-    }
 }

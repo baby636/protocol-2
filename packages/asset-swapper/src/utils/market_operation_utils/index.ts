@@ -139,7 +139,6 @@ export class MarketOperationUtils {
         // Call the sampler contract.
         const samplerPromise = this._sampler.executeBatchAsync(
             [
-                this._sampler.doSomething(takerToken),
                 this._sampler.getTokenDecimals([makerToken, takerToken]),
                 // Get native order fillable amounts.
                 this._sampler.getLimitOrderFillableTakerAmounts(nativeOrders, this.contractAddresses.exchangeProxy),
@@ -177,7 +176,6 @@ export class MarketOperationUtils {
 
         const [
             [
-                _doSomething,
                 tokenDecimals,
                 orderFillableTakerAmounts,
                 outputAmountPerEth,
@@ -187,8 +185,6 @@ export class MarketOperationUtils {
                 isTxOriginContract,
             ],
         ] = await Promise.all([samplerPromise]);
-
-        console.log({ _doSomething });
 
         // Filter out any invalid two hop quotes where we couldn't find a route
         const twoHopQuotes = rawTwoHopQuotes.filter(
