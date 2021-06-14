@@ -68,10 +68,7 @@ contract SwapRevertSampler {
             getSwapQuoteCallback;
     }
 
-    /// @dev  Mints the sell token, then performs the swap, then reverts with the amount out.
-    /// The SwapRevertSamplerQuoteOpts has been unrolled here as our ABI encoder cannot support
-    /// encoding the function
-    function _mintCallRevert(
+    function _callRevert(
         bytes4 selector,
         address sellToken,
         address buyToken,
@@ -80,29 +77,6 @@ contract SwapRevertSampler {
     )
         external
     {
-        HackedERC20 hackedSellToken = HackedERC20(payable(sellToken));
-        HackedERC20 hackedBuyToken = HackedERC20(payable(buyToken));
-
-        // Mint enough to sell
-        try
-            hackedSellToken._setBalance(address(this), amountIn)
-        { } catch { }
-
-        try
-            IEtherTokenV06(payable(sellToken)).deposit{ value: amountIn }()
-        { } catch { }
-
-        // Ensure the balance of the buyToken is 0
-        try
-            hackedBuyToken._setBalance(address(this), 0)
-        { } catch { }
-
-        require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");
-        require(hackedBuyToken.balanceOf(address(this)) == 0, "Balance of buyToken must be 0");
-
-        // Burn any excess ETH to avoid balance issues for sources which use ETH directly
-        address(0).transfer(address(this).balance);
-
         // Clear any registered overhead
         try
             GasOverhead(GAS_OVERHEAD).clearOverhead()
@@ -126,7 +100,73 @@ contract SwapRevertSampler {
             data.rrevert();
         }
         // Revert with the amount bought
-        _revertSwapSample(abi.decode(data, (uint256)), gasUsed);
+        _revertSingleSwapSample(abi.decode(data, (uint256)), gasUsed);
+    }
+
+    /// @dev  Mints the sell token, then performs the swap, then reverts with the amount out.
+    /// The SwapRevertSamplerQuoteOpts has been unrolled here as our ABI encoder cannot support
+    /// encoding the function
+    function _mintCallRevert(
+        bytes4 selector,
+        address sellToken,
+        address buyToken,
+        bytes memory bridgeData,
+        uint256[] memory amountsIn
+    )
+        external
+    {
+        HackedERC20 hackedSellToken = HackedERC20(payable(sellToken));
+        HackedERC20 hackedBuyToken = HackedERC20(payable(buyToken));
+        // We assume the amounts are ascending and that
+        // the underlying call can handle selling a specific amount
+        uint256 amountIn = amountsIn[amountsIn.length - 1];
+
+        // Mint enough to sell
+        try
+            hackedSellToken._setBalance(address(this), amountIn)
+        { } catch { }
+
+        try
+            IEtherTokenV06(payable(sellToken)).deposit{ value: amountIn }()
+        { } catch { }
+
+        // Ensure the balance of the buyToken is 0
+        try
+            hackedBuyToken._setBalance(address(this), 0)
+        { } catch { }
+
+        require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");
+        require(hackedBuyToken.balanceOf(address(this)) == 0, "Balance of buyToken must be 0");
+
+        // Burn any excess ETH to avoid balance issues for sources which use ETH directly
+        address(0).transfer(address(this).balance);
+
+        uint256[] memory amountsOut = new uint256[](amountsIn.length);
+        uint256[] memory gasUsed = new uint256[](amountsIn.length);
+
+        for (uint256 i = 0; i < amountsIn.length; i++) {
+            try
+                this._callRevert{gas: 2e6}(
+                    selector,
+                    sellToken,
+                    buyToken,
+                    bridgeData,
+                    amountsIn[i]
+                )
+            {
+                require(false, "Swap Sample should have reverted");
+            } catch (bytes memory reason) {
+                // Parse the reverted sample data
+                (amountsOut[i], gasUsed[i]) = _parseRevertedSingleSwapSample(reason);
+                // If we detect the amount out is 0 then we return early
+                // rather than continue performing excess work
+                if (amountsOut[i] == 0) {
+                    break;
+                }
+            }
+        }
+        // Revert the entire sampling
+        _revertSwapSample(amountsOut, gasUsed);
     }
 
     function _sampleSwapQuotesRevert(
@@ -136,35 +176,23 @@ contract SwapRevertSampler {
         internal
         returns (uint256[] memory gasUsed, uint256[] memory amountsOut)
     {
-        amountsOut = new uint256[](amountsIn.length);
-        gasUsed = new uint256[](amountsIn.length);
-
-        for (uint256 i = 0; i < amountsIn.length; i++) {
-            try
-                this._mintCallRevert{gas: 2e6}(
-                    opts.getSwapQuoteCallback.selector,
-                    opts.sellToken,
-                    opts.buyToken,
-                    opts.bridgeData,
-                    amountsIn[i]
-                )
-            {
-                require(false, "Swap Sample should have reverted");
-            } catch (bytes memory reason) {
-                // Parse the reverted sample data
-                // Flip the second parameter during development to raise the underlying revert
-                // if one exists
-                (amountsOut[i], gasUsed[i]) = _parseRevertedSwapSample(reason, false);
-                // If we detect the amount out is 0 then we return early
-                // rather than continue performing excess work
-                if (amountsOut[i] == 0) {
-                    break;
-                }
-            }
+        try
+            this._mintCallRevert(
+                opts.getSwapQuoteCallback.selector,
+                opts.sellToken,
+                opts.buyToken,
+                opts.bridgeData,
+                amountsIn
+            )
+        {
+            require(false, "Swap Sample should have reverted");
+        } catch (bytes memory reason) {
+            // Parse the reverted sample datas
+            (amountsOut, gasUsed) = abi.decode(reason, (uint256[], uint256[]));
         }
     }
 
-    function _revertSwapSample(
+    function _revertSingleSwapSample(
         uint256 amount,
         uint256 gasUsed
     )
@@ -179,27 +207,34 @@ contract SwapRevertSampler {
         }
     }
 
+    function _revertSwapSample(
+        uint256[] memory amounts,
+        uint256[] memory gasUsed
+    )
+        internal
+    {
+        bytes memory data = abi.encode(amounts, gasUsed);
+        // Revert it so there is no state change
+        assembly {
+            revert(add(data, 32), mload(data))
+        }
+    }
+
     /// @dev Parses the reverted swap sample data. If no amount
     ///      is decoded, 0 is returned.
     /// @param reason the string which contains the possible
     ///               sample amount
-    /// @param revertOnError  whether to return 0 or revert if invalid
     /// @return the decoded sample amount or 0
     /// @return the gas used in the sample
-    function _parseRevertedSwapSample(
-        bytes memory reason,
-        bool revertOnError
+    function _parseRevertedSingleSwapSample(
+        bytes memory reason
     )
         internal
         pure
         returns (uint256, uint256)
     {
         if (reason.length != 64) {
-            if (revertOnError) {
-                reason.rrevert();
-            } else {
-                return (0,0);
-            }
+            return (0,0);
         }
         return abi.decode(reason, (uint256, uint256));
     }

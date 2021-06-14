@@ -58,6 +58,15 @@ import {
     OrderDomain,
 } from './types';
 
+const HACKED_ERC20_BYTECODE = _.get(artifacts.HackedERC20, 'compilerOutput.evm.deployedBytecode.object');
+const GAS_OVERHEAD_BYTECODE = _.get(artifacts.GasOverhead, 'compilerOutput.evm.deployedBytecode.object');
+const DELEGEATE_HACKED_ERC20_BYTECODE = _.get(
+    artifacts.DelegateHackedERC20,
+    'compilerOutput.evm.deployedBytecode.object',
+);
+const HACKED_ERC20_ADDRESS = '0xDEf1000000000000000000000000000000DE7d37';
+const GAS_OVERHEAD_ADDRESS = '0xDeF1000000000000000000000000000000001337';
+
 // tslint:disable:boolean-naming
 
 export class MarketOperationUtils {
@@ -764,9 +773,8 @@ export class MarketOperationUtils {
 
         const tokenCodes = tokens.map(t => this._contractCodeByAddress[t]!);
 
-        const hackedERC20Bytecode = _.get(artifacts.HackedERC20, 'compilerOutput.evm.deployedBytecode.object');
-        const overrides: { [address: string]: { code: string } } = {};
         const nativeWrappedToken = NATIVE_FEE_TOKEN_BY_CHAIN_ID[this._sampler.chainId];
+        const overrides: { [address: string]: { code: string } } = {};
         tokens.forEach((token, i) => {
             // Skip overriding WETH like token as this can be used directly with a deposit
             if (token === nativeWrappedToken) {
@@ -780,15 +788,16 @@ export class MarketOperationUtils {
                     20,
                 ),
             );
-            // Override the original implementation
-            overrides[token] = { code: hackedERC20Bytecode };
+            // Override the original implementation with the HackedERC20 delegate
+            overrides[token] = { code: DELEGEATE_HACKED_ERC20_BYTECODE };
             // Specify the original implementation at a new address (+1)
             overrides[tokenImplAddress] = { code: tokenCodes[i] };
         });
 
-        // Also set the gas overhead counter to a known address
-        const gasOverhead = _.get(artifacts.GasOverhead, 'compilerOutput.evm.deployedBytecode.object');
-        overrides['0xDeF1000000000000000000000000000000001337'] = { code: gasOverhead };
+        // Set the gas overhead counter to a known address
+        overrides[GAS_OVERHEAD_ADDRESS] = { code: GAS_OVERHEAD_BYTECODE };
+        // Set the fixed impl of a HackedERC20 bytecode, all other tokens use a delegate call
+        overrides[HACKED_ERC20_ADDRESS] = { code: HACKED_ERC20_BYTECODE };
 
         return { overrides };
     }

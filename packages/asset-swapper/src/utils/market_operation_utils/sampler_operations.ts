@@ -1227,6 +1227,7 @@ export class SamplerOperations {
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
+                fillData.gasUsed = gasUsed;
                 _log({
                     source: ERC20BridgeSource.DodoV2,
                     fillData,
@@ -1255,6 +1256,7 @@ export class SamplerOperations {
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
+                fillData.gasUsed = gasUsed;
                 _log({
                     source: ERC20BridgeSource.DodoV2,
                     fillData,
@@ -1278,6 +1280,7 @@ export class SamplerOperations {
                 takerToken,
                 makerToken,
                 ...psmInfo,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMakerPsm,
@@ -1287,6 +1290,7 @@ export class SamplerOperations {
                     'sampleSellsFromMakerPsm',
                     callResults,
                 );
+                fillData.gasUsed = gasUsed;
                 _log({
                     source: ERC20BridgeSource.MakerPsm,
                     fillData,
@@ -1310,6 +1314,7 @@ export class SamplerOperations {
                 takerToken,
                 makerToken,
                 ...psmInfo,
+                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMakerPsm,
@@ -1319,6 +1324,7 @@ export class SamplerOperations {
                     'sampleBuysFromMakerPsm',
                     callResults,
                 );
+                fillData.gasUsed = gasUsed;
                 _log({
                     source: ERC20BridgeSource.MakerPsm,
                     fillData,

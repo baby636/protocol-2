@@ -224,6 +224,7 @@ export interface MultiHopFillData extends FillData {
 export interface MakerPsmExtendedData {
     isSellOperation: boolean;
     takerToken: string;
+    gasUsed: BigNumber[];
 }
 
 export type MakerPsmFillData = FillData & MakerPsmExtendedData & PsmInfo;
