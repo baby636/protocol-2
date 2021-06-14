@@ -167,13 +167,21 @@ export class MarketOperationUtils {
                 ),
                 // Get sell quotes for taker -> maker.
                 this._sampler.getSellQuotes(quoteSourceFilters.sources, makerToken, takerToken, sampleAmounts),
+                this._sampler.isAddressContract(txOrigin),
+            ],
+            {
+                overrides,
+            },
+        );
+        // Perform the MultiHop sell quotes in a separate request
+        const multiHopsamplerPromise = this._sampler.executeBatchAsync(
+            [
                 this._sampler.getTwoHopSellQuotes(
                     quoteSourceFilters.isAllowed(ERC20BridgeSource.MultiHop) ? quoteSourceFilters.sources : [],
                     makerToken,
                     takerToken,
                     takerAmount,
                 ),
-                this._sampler.isAddressContract(txOrigin),
             ],
             {
                 overrides,
@@ -190,10 +198,10 @@ export class MarketOperationUtils {
                 outputAmountPerEth,
                 inputAmountPerEth,
                 dexQuotes,
-                rawTwoHopQuotes,
                 isTxOriginContract,
             ],
-        ] = await Promise.all([samplerPromise]);
+            [rawTwoHopQuotes],
+        ] = await Promise.all([samplerPromise, multiHopsamplerPromise]);
 
         // Filter out any invalid two hop quotes where we couldn't find a route
         const twoHopQuotes = rawTwoHopQuotes.filter(
