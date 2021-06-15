@@ -187,7 +187,7 @@ contract UniswapV3Sampler is
                     takerTokenAmounts[j] = _takerTokenAmounts[j];
                     gasUsed[j] = _gasUsed[j];
                     // But the output path should still be encoded for sells.
-                    uniswapPaths[j] = _toUniswapPath(path, poolPaths[j]);
+                    uniswapPaths[j] = _toUniswapPath(path, poolPaths[i]);
                 }
             }
         }

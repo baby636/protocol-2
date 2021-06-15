@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
 
-  Copyright 2020 ZeroEx Intl.
+  Copyright 2021 ZeroEx Intl.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -73,8 +73,11 @@ contract MooniswapSampler is
         public
         returns (address pool, uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
-        // TODO this needs to be ETH
-        pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
+        pool = _getMooniswapPool(registry, takerToken, makerToken);
+        if (address(pool) == address(0)) {
+            return (pool, gasUsed, makerTokenAmounts);
+        }
+
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
                 sellToken: takerToken,
@@ -104,7 +107,11 @@ contract MooniswapSampler is
         public
         returns (address pool, uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
+        pool = _getMooniswapPool(registry, takerToken, makerToken);
+        if (address(pool) == address(0)) {
+            return (pool, gasUsed, takerTokenAmounts);
+        }
+
         (gasUsed, takerTokenAmounts) = _sampleSwapApproximateBuys(
             SwapRevertSamplerBuyQuoteOpts({
                 sellToken: takerToken,
@@ -115,6 +122,25 @@ contract MooniswapSampler is
             }),
             makerTokenAmounts
         );
+    }
 
+    function _getMooniswapPool(
+        address registry,
+        address takerToken,
+        address makerToken
+    )
+        internal
+        returns (address pool)
+    {
+        // WETH is actually ETH in these pools and represented as address(0)
+        address _takerToken = takerToken == 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 ? address(0) : takerToken;
+        address _makerToken = makerToken == 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 ? address(0) : makerToken;
+
+        try
+            IMooniswapRegistry(registry).pools{gas: 300e3}(_takerToken, _makerToken)
+            returns (address _pool)
+        {
+            pool = _pool;
+        } catch { }
     }
 }

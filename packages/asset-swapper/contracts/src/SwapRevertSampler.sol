@@ -246,7 +246,7 @@ contract SwapRevertSampler {
     /// @dev Maximum approximate (positive) error rate when approximating a buy quote.
     uint256 private constant APPROXIMATE_BUY_TARGET_EPSILON_BPS = 0.0005e4;
     /// @dev Maximum iterations to perform when approximating a buy quote.
-    uint256 private constant APPROXIMATE_BUY_MAX_ITERATIONS = 5;
+    uint256 private constant APPROXIMATE_BUY_MAX_ITERATIONS = 3;
 
     function _sampleSwapApproximateBuys(
         SwapRevertSamplerBuyQuoteOpts memory opts,
@@ -255,11 +255,12 @@ contract SwapRevertSampler {
         internal
         returns (uint256[] memory gasUsed, uint256[] memory takerTokenAmounts)
     {
-        takerTokenAmounts = new uint256[](makerTokenAmounts.length);
-        gasUsed = new uint256[](makerTokenAmounts.length);
         if (makerTokenAmounts.length == 0) {
             return (gasUsed, takerTokenAmounts);
         }
+
+        takerTokenAmounts = new uint256[](makerTokenAmounts.length);
+        gasUsed = new uint256[](makerTokenAmounts.length);
 
         uint256[] memory sellAmounts = new uint256[](1);
         sellAmounts[0] = makerTokenAmounts[0];
@@ -279,7 +280,7 @@ contract SwapRevertSampler {
         });
         // Inverted, perform a sell of the token the user wants to buy
         (, sellAmounts) = _sampleSwapQuotesRevert(buyOpts, sellAmounts);
-        if (sellAmounts[0] == 0) {
+        if (sellAmounts.length == 0 || sellAmounts[0] == 0) {
             return (gasUsed, takerTokenAmounts);
         }
 
@@ -287,7 +288,7 @@ contract SwapRevertSampler {
         // Sell of the token the user wishes to dispose, see how much we buy
         (, buyAmounts) = _sampleSwapQuotesRevert(sellOpts, sellAmounts);
 
-        if (buyAmounts[0] == 0) {
+        if (buyAmounts.length == 0 || buyAmounts[0] == 0) {
             return (gasUsed, takerTokenAmounts);
         }
 
@@ -295,25 +296,25 @@ contract SwapRevertSampler {
             uint256[] memory _gasUsed;
             for (uint256 iter = 0; iter < APPROXIMATE_BUY_MAX_ITERATIONS; iter++) {
                 // adjustedSellAmount = previousSellAmount * (target/actual) * JUMP_MULTIPLIER
-                sellAmounts[0] = _safeGetPartialAmountCeil2(
+                sellAmounts[0] = _safeGetPartialAmountCeil(
                     makerTokenAmounts[i],
                     buyAmounts[0],
                     sellAmounts[0]
                 );
-                if (sellAmounts[0] == 0) {
+                if (sellAmounts.length == 0 || sellAmounts[0] == 0) {
                     break;
                 }
-                sellAmounts[0] = _safeGetPartialAmountCeil2(
+                sellAmounts[0] = _safeGetPartialAmountCeil(
                     (ONE_HUNDED_PERCENT_BPS + APPROXIMATE_BUY_TARGET_EPSILON_BPS),
                     ONE_HUNDED_PERCENT_BPS,
                     sellAmounts[0]
                 );
-                if (sellAmounts[0] == 0) {
+                if (sellAmounts.length == 0 || sellAmounts[0] == 0) {
                     break;
                 }
                 uint256[] memory _buyAmounts;
                 (_gasUsed, _buyAmounts) = _sampleSwapQuotesRevert(sellOpts, sellAmounts);
-                if (_buyAmounts[0] == 0) {
+                if (_buyAmounts.length == 0 || _buyAmounts[0] == 0) {
                     break;
                 }
                 // We re-use buyAmount next iteration, only assign if it is
@@ -329,19 +330,21 @@ contract SwapRevertSampler {
                     }
                 }
             }
-            gasUsed[i] = _gasUsed[0];
-            // We do our best to close in on the requested amount, but we can either over buy or under buy and exit
-            // if we hit a max iteration limit
-            // We scale the sell amount to get the approximate target
-            takerTokenAmounts[i] = _safeGetPartialAmountCeil2(
-                makerTokenAmounts[i],
-                buyAmounts[0],
-                sellAmounts[0]
-            );
+            if (_gasUsed.length > 0 && buyAmounts.length > 0) {
+                gasUsed[i] = _gasUsed[0];
+                // We do our best to close in on the requested amount, but we can either over buy or under buy and exit
+                // if we hit a max iteration limit
+                // We scale the sell amount to get the approximate target
+                takerTokenAmounts[i] = _safeGetPartialAmountCeil(
+                    makerTokenAmounts[i],
+                    buyAmounts[0],
+                    sellAmounts[0]
+                );
+            }
         }
     }
 
-    function _safeGetPartialAmountCeil2(
+    function _safeGetPartialAmountCeil(
         uint256 numerator,
         uint256 denominator,
         uint256 target
