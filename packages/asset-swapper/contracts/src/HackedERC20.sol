@@ -22,6 +22,14 @@ contract HackedERC20 {
     bytes32 private constant STORAGE_SLOT = 0x64fd48372774b9637ace5c8c7a951f04ea13c793935207f2eada5382a0ec82cb;
     address private constant GAS_OVERHEAD = 0xDeF1000000000000000000000000000000001337;
 
+    // HackedERC20 also has the overhead of being Delegated to from the replaced token
+    // USDT->DelegateHackedERC20->HackedERC20
+    uint256 constant DELEGATE_CALL_OVERHEAD = 5000;
+
+    // When enabled the HackedERC20 token will shadow and track balances
+    // when disabled (default) it will call the original implementation
+    bool public _enabled = false;
+
     receive() external payable {}
 
     fallback() payable external {
@@ -34,6 +42,10 @@ contract HackedERC20 {
         /* view */
         returns (uint256 balance)
     {
+        if (!_enabled) {
+            bytes memory r = _forwardCallToImpl();
+            assembly { return(add(r, 32), mload(r)) }
+        }
         (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         return sBal.shadowedAmount;
     }
@@ -43,6 +55,10 @@ contract HackedERC20 {
         /* view */
         returns (uint256 allowance_)
     {
+        if (!_enabled) {
+            bytes memory r = _forwardCallToImpl();
+            assembly { return(add(r, 32), mload(r)) }
+        }
         (ShadowedAmount memory sBal,) = _getSyncedAllowance(owner, spender);
         return sBal.shadowedAmount;
     }
@@ -51,6 +67,10 @@ contract HackedERC20 {
         public
         returns (bool success)
     {
+        if (!_enabled) {
+            bytes memory r = _forwardCallToImpl();
+            assembly { return(add(r, 32), mload(r)) }
+        }
         _updateAllowance(from, amount);
         success = _transferFromInternal(from, to, amount);
     }
@@ -60,6 +80,10 @@ contract HackedERC20 {
         external
         returns (bool success)
     {
+        if (!_enabled) {
+            bytes memory r = _forwardCallToImpl();
+            assembly { return(add(r, 32), mload(r)) }
+        }
         success = _transferFromInternal(msg.sender, to, amount);
     }
 
@@ -67,6 +91,10 @@ contract HackedERC20 {
         external
         returns (bool)
     {
+        if (!_enabled) {
+            bytes memory r = _forwardCallToImpl();
+            assembly { return(add(r, 32), mload(r)) }
+        }
         (
             ShadowedAmount memory sAllowance,
             uint256 gasOverhead
@@ -77,7 +105,7 @@ contract HackedERC20 {
 
         // Update the global gas overhead from a approval sync
         try
-            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead + DELEGATE_CALL_OVERHEAD, gasleft())
         { } catch { }
         return true;
     }
@@ -88,6 +116,12 @@ contract HackedERC20 {
         (ShadowedAmount memory sBal,) = _getSyncedBalance(owner);
         sBal.shadowedAmount = amount;
         _writeSyncedBalance(owner, sBal);
+    }
+
+    function _setEnabled(bool enabled)
+        public
+    {
+        _enabled = enabled;
     }
 
     function _getSyncedAllowance(address owner, address spender)
@@ -239,7 +273,7 @@ contract HackedERC20 {
 
         // Update the global gas overhead from a transfer call
         try
-            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead + DELEGATE_CALL_OVERHEAD, gasleft())
         { } catch { }
 
         return true;
@@ -255,17 +289,15 @@ contract HackedERC20 {
                 amount,
                 'HackedERC20/ALLOWANCE_UNDERFLOW'
             );
-            // Assume a NON MAX_UINT results in allowance update SSTORE
             _writeSyncedAllowance(from, msg.sender, sAllowance);
-        } else {
-            // Assume a MAX_UINT results in no allowance update SSTORE
-            uint256 gasBefore = gasleft();
-            _writeSyncedAllowance(from, msg.sender, sAllowance);
-            gasOverhead = gasOverhead + (gasBefore - gasleft());
         }
+        uint256 gasBefore = gasleft();
+        // Assume a NON MAX_UINT results in allowance update SSTORE
+        _writeSyncedAllowance(from, msg.sender, sAllowance);
+        gasOverhead += gasBefore - gasleft();
         // Update the global gas overhead from a allowance check
         try
-            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead, gasleft())
+            GasOverhead(GAS_OVERHEAD).addOverhead(gasOverhead + DELEGATE_CALL_OVERHEAD, gasleft())
         { } catch { }
     }
 

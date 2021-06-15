@@ -159,14 +159,12 @@ export class DexOrderSampler extends SamplerOperations {
             .callAsync({ overrides }, block);
         // Return the parsed results.
         let rawCallResultsIdx = 0;
-        const timeBefore = Date.now();
         const results = callDatas.map((callData, i) => {
             // tslint:disable-next-line:boolean-naming
             const { data, success } =
                 callData !== NULL_BYTES ? rawCallResults[rawCallResultsIdx++] : { success: true, data: NULL_BYTES };
             return success ? ops[i].handleCallResults(data) : ops[i].handleRevert(data);
         });
-        console.log({ time: Date.now() - timeBefore });
         return results;
     }
 }

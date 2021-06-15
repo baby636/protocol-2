@@ -1372,6 +1372,7 @@ export class SamplerOperations {
                         output,
                         input: takerFillAmounts[j],
                         fillData: op.fillData,
+                        gasUsed: ((op.fillData as any).gasUsed && (op.fillData as any).gasUsed[j]) || undefined,
                     }));
                 });
             },

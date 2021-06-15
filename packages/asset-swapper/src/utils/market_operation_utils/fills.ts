@@ -155,21 +155,23 @@ function dexSamplesToFills(
         const input = sample.input.minus(prevSample ? prevSample.input : 0);
         const output = sample.output.minus(prevSample ? prevSample.output : 0);
         let fee = fees[source] === undefined ? 0 : fees[source]!(sample.fillData) || 0;
+        // TODO cleanup
         if (gasPrice && gasPrice.isGreaterThan(0)) {
-            const s = sample.fillData as ({ gasUsed: BigNumber[] });
-            if (s.gasUsed && s.gasUsed.length > 0) {
-                const newFee = gasPrice.times(s.gasUsed[0]);
-                // TODO remove
-                // console.log({ fee,
-                //     newFee,
-                //     source: sample.source,
-                //     newGasUsed: s.gasUsed[0],
-                //     oldGasUsed: new BigNumber(fee).dividedToIntegerBy(gasPrice),
-                // });
-                fee = newFee;
-            } else {
-                console.log(`Missing gasUsed for ${sample.source}`);
+            if (!sample.gasUsed) {
+                console.log(`${sample.source} Missing gasUsed`);
             }
+            const gasUsed = sample.gasUsed || new BigNumber(fee).dividedToIntegerBy(gasPrice);
+            const newFee = gasPrice.times(gasUsed);
+            // TODO remove
+            // console.log({
+            //     fee,
+            //     newFee,
+            //     source: sample.source,
+            //     newGasUsed: gasUsed,
+            //     oldGasUsed: new BigNumber(fee).dividedToIntegerBy(gasPrice),
+            //     fillData: sample.fillData,
+            // });
+            fee = newFee;
         } else {
             console.log('Missing gas price');
         }

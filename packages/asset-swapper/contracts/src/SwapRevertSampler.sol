@@ -28,6 +28,7 @@ import "@0x/contracts-utils/contracts/src/v06/errors/LibRichErrorsV06.sol";
 
 interface IHackedERC20 {
     function _setBalance(address owner, uint256 amount) external;
+    function _setEnabled(bool enabled) external;
 }
 
 contract SwapRevertSampler {
@@ -119,10 +120,14 @@ contract SwapRevertSampler {
         external
     {
         IHackedERC20 hackedSellToken = IHackedERC20(payable(sellToken));
-        IHackedERC20 hackedBuyToken = IHackedERC20(payable(buyToken));
         // We assume the amounts are ascending and that
         // the underlying call can handle selling a specific amount
         uint256 amountIn = amountsIn[amountsIn.length - 1];
+
+        // Enable sell token to be tracked and shadowed
+        try
+            hackedSellToken._setEnabled(true)
+        { } catch { }
 
         // Mint enough to sell
         try
@@ -133,6 +138,7 @@ contract SwapRevertSampler {
             IEtherTokenV06(payable(sellToken)).deposit{ value: amountIn }()
         { } catch { }
 
+        // IHackedERC20 hackedBuyToken = IHackedERC20(payable(buyToken));
         // // Ensure the balance of the buyToken is 0
         // try
         //     hackedBuyToken._setBalance(address(this), 0)
