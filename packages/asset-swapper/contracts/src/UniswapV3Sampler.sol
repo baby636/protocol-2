@@ -100,32 +100,31 @@ contract UniswapV3Sampler is
         gasUsed = new uint256[](takerTokenAmounts.length);
         uniswapPaths = new bytes[](takerTokenAmounts.length);
 
-        for (uint256 i = 0; i < takerTokenAmounts.length; ++i) {
-            for (uint256 j = 0; j < poolPaths.length; ++j) {
-                bytes memory _uniswapPath = _toUniswapPath(path, poolPaths[j]);
-
-                (
-                    uint256[] memory _gasUsed,
-                    uint256[] memory _makerTokenAmounts
-                ) = _sampleSwapQuotesRevert(
-                    SwapRevertSamplerQuoteOpts({
-                        sellToken: address(path[0]),
-                        buyToken: address(path[path.length - 1]),
-                        bridgeData: abi.encode(router, _uniswapPath),
-                        getSwapQuoteCallback: this.sampleSwapFromUniswapV3
-                    }),
-                    _toSingleValueArray(takerTokenAmounts[i])
-                );
-                // If this is better than what we have found, prefer it
-                if (makerTokenAmounts[i] <= _makerTokenAmounts[0]) {
-                    makerTokenAmounts[i] = _makerTokenAmounts[0];
-                    gasUsed[i] = _gasUsed[0];
-                    uniswapPaths[i] = _uniswapPath;
+        for (uint256 i = 0; i < poolPaths.length; ++i) {
+            bytes memory _uniswapPath = _toUniswapPath(path, poolPaths[i]);
+            (
+                uint256[] memory _gasUsed,
+                uint256[] memory _makerTokenAmounts
+            ) = _sampleSwapQuotesRevert(
+                SwapRevertSamplerQuoteOpts({
+                    sellToken: address(path[0]),
+                    buyToken: address(path[path.length - 1]),
+                    bridgeData: abi.encode(router, _uniswapPath),
+                    getSwapQuoteCallback: this.sampleSwapFromUniswapV3
+                }),
+                takerTokenAmounts
+            );
+            for (uint256 j = 0; j < _makerTokenAmounts.length; ++j) {
+                // Break early if we can't complete the sells.
+                if (_makerTokenAmounts[j] == 0) {
+                    break;
                 }
-            }
-            // Break early if we can't complete the sells.
-            if (makerTokenAmounts[i] == 0) {
-                break;
+                // If this is better than what we have found, prefer it
+                if (makerTokenAmounts[j] <= _makerTokenAmounts[j]) {
+                    makerTokenAmounts[j] = _makerTokenAmounts[j];
+                    gasUsed[j] = _gasUsed[j];
+                    uniswapPaths[j] = _uniswapPath;
+                }
             }
         }
     }
@@ -159,6 +158,8 @@ contract UniswapV3Sampler is
         takerTokenAmounts = new uint256[](makerTokenAmounts.length);
         gasUsed = new uint256[](makerTokenAmounts.length);
         uniswapPaths = new bytes[](makerTokenAmounts.length);
+
+        // TODO rework to not use single value array
 
         for (uint256 i = 0; i < makerTokenAmounts.length; ++i) {
             for (uint256 j = 0; j < poolPaths.length; ++j) {

@@ -22,10 +22,13 @@
 pragma solidity ^0.6;
 pragma experimental ABIEncoderV2;
 
-import "./HackedERC20.sol";
 import "./GasOverhead.sol";
 import "@0x/contracts-erc20/contracts/src/v06/IEtherTokenV06.sol";
 import "@0x/contracts-utils/contracts/src/v06/errors/LibRichErrorsV06.sol";
+
+interface IHackedERC20 {
+    function _setBalance(address owner, uint256 amount) external;
+}
 
 contract SwapRevertSampler {
     using LibRichErrorsV06 for bytes;
@@ -115,8 +118,8 @@ contract SwapRevertSampler {
     )
         external
     {
-        HackedERC20 hackedSellToken = HackedERC20(payable(sellToken));
-        HackedERC20 hackedBuyToken = HackedERC20(payable(buyToken));
+        IHackedERC20 hackedSellToken = IHackedERC20(payable(sellToken));
+        IHackedERC20 hackedBuyToken = IHackedERC20(payable(buyToken));
         // We assume the amounts are ascending and that
         // the underlying call can handle selling a specific amount
         uint256 amountIn = amountsIn[amountsIn.length - 1];
@@ -130,16 +133,16 @@ contract SwapRevertSampler {
             IEtherTokenV06(payable(sellToken)).deposit{ value: amountIn }()
         { } catch { }
 
-        // Ensure the balance of the buyToken is 0
-        try
-            hackedBuyToken._setBalance(address(this), 0)
-        { } catch { }
+        // // Ensure the balance of the buyToken is 0
+        // try
+        //     hackedBuyToken._setBalance(address(this), 0)
+        // { } catch { }
 
-        require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");
-        require(hackedBuyToken.balanceOf(address(this)) == 0, "Balance of buyToken must be 0");
+        // require(hackedSellToken.balanceOf(address(this)) == amountIn, "Failed to mint or deposit sellToken");
+        // require(hackedBuyToken.balanceOf(address(this)) == 0, "Balance of buyToken must be 0");
 
-        // Burn any excess ETH to avoid balance issues for sources which use ETH directly
-        address(0).transfer(address(this).balance);
+        // // Burn any excess ETH to avoid balance issues for sources which use ETH directly
+        // address(0).transfer(address(this).balance);
 
         uint256[] memory amountsOut = new uint256[](amountsIn.length);
         uint256[] memory gasUsed = new uint256[](amountsIn.length);

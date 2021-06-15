@@ -73,6 +73,7 @@ contract MooniswapSampler is
         public
         returns (address pool, uint256[] memory gasUsed, uint256[] memory makerTokenAmounts)
     {
+        // TODO this needs to be ETH
         pool = IMooniswapRegistry(registry).pools(takerToken, makerToken);
         (gasUsed, makerTokenAmounts) = _sampleSwapQuotesRevert(
             SwapRevertSamplerQuoteOpts({
