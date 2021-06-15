@@ -30,7 +30,6 @@ import * as MakerPSMSampler from '../test/generated-artifacts/MakerPSMSampler.js
 import * as MooniswapSampler from '../test/generated-artifacts/MooniswapSampler.json';
 import * as MStableSampler from '../test/generated-artifacts/MStableSampler.json';
 import * as NativeOrderSampler from '../test/generated-artifacts/NativeOrderSampler.json';
-import * as SamplerUtils from '../test/generated-artifacts/SamplerUtils.json';
 import * as ShellSampler from '../test/generated-artifacts/ShellSampler.json';
 import * as SwapRevertSampler from '../test/generated-artifacts/SwapRevertSampler.json';
 import * as TestERC20BridgeSampler from '../test/generated-artifacts/TestERC20BridgeSampler.json';
@@ -61,7 +60,6 @@ export const artifacts = {
     MakerPSMSampler: MakerPSMSampler as ContractArtifact,
     MooniswapSampler: MooniswapSampler as ContractArtifact,
     NativeOrderSampler: NativeOrderSampler as ContractArtifact,
-    SamplerUtils: SamplerUtils as ContractArtifact,
     ShellSampler: ShellSampler as ContractArtifact,
     SwapRevertSampler: SwapRevertSampler as ContractArtifact,
     TwoHopSampler: TwoHopSampler as ContractArtifact,

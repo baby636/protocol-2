@@ -25,8 +25,6 @@ import "@0x/contracts-utils/contracts/src/v06/errors/LibRichErrorsV06.sol";
 
 import "@0x/contracts-zero-ex/contracts/src/transformers/bridges/mixins/MixinUniswapV3.sol";
 import "./SwapRevertSampler.sol";
-import "./SamplerUtils.sol";
-
 
 interface IUniswapV3Quoter {
     function factory()
@@ -50,8 +48,7 @@ interface IUniswapV3Pool {
 
 contract UniswapV3Sampler is
     MixinUniswapV3,
-    SwapRevertSampler,
-    SamplerUtils
+    SwapRevertSampler
 {
     using LibRichErrorsV06 for bytes;
 
@@ -159,41 +156,39 @@ contract UniswapV3Sampler is
         gasUsed = new uint256[](makerTokenAmounts.length);
         uniswapPaths = new bytes[](makerTokenAmounts.length);
 
-        // TODO rework to not use single value array
+        for (uint256 i = 0; i < poolPaths.length; ++i) {
+            (
+                uint256[] memory _gasUsed,
+                uint256[] memory _takerTokenAmounts
+            ) = _sampleSwapApproximateBuys(
+                SwapRevertSamplerBuyQuoteOpts({
+                    sellToken: address(path[0]),
+                    buyToken: address(path[path.length - 1]),
+                    sellTokenData: abi.encode(router, _toUniswapPath(path, poolPaths[i])),
+                    buyTokenData: abi.encode(
+                        router,
+                        _toUniswapPath(
+                            reversedPath,
+                            _reversePoolPath(poolPaths[i])
+                        )
+                    ),
+                    getSwapQuoteCallback: this.sampleSwapFromUniswapV3
+                }),
+                makerTokenAmounts
+            );
 
-        for (uint256 i = 0; i < makerTokenAmounts.length; ++i) {
-            for (uint256 j = 0; j < poolPaths.length; ++j) {
-                (
-                    uint256[] memory _gasUsed,
-                    uint256[] memory _takerTokenAmounts
-                ) = _sampleSwapApproximateBuys(
-                    SwapRevertSamplerBuyQuoteOpts({
-                        sellToken: address(path[0]),
-                        buyToken: address(path[path.length - 1]),
-                        sellTokenData: abi.encode(router, _toUniswapPath(path, poolPaths[j])),
-                        buyTokenData: abi.encode(
-                            router,
-                            _toUniswapPath(
-                                reversedPath,
-                                _reversePoolPath(poolPaths[j])
-                            )
-                        ),
-                        getSwapQuoteCallback: this.sampleSwapFromUniswapV3
-                    }),
-                    _toSingleValueArray(makerTokenAmounts[i])
-                );
-
-                // We can go from high to low here
-                if (takerTokenAmounts[i] == 0 || takerTokenAmounts[i] >= _takerTokenAmounts[0]) {
-                    takerTokenAmounts[i] = _takerTokenAmounts[0];
-                    gasUsed[i] = _gasUsed[0];
-                    // But the output path should still be encoded for sells.
-                    uniswapPaths[i] = _toUniswapPath(path, poolPaths[j]);
+            for (uint256 j = 0; j < _takerTokenAmounts.length; ++j) {
+                // Break early if we can't complete the buys.
+                if (_takerTokenAmounts[j] == 0) {
+                    break;
                 }
-            }
-            // Break early if we can't complete the buys.
-            if (takerTokenAmounts[i] == 0) {
-                break;
+                // We can go from high to low here
+                if (takerTokenAmounts[j] == 0 || takerTokenAmounts[j] >= _takerTokenAmounts[j]) {
+                    takerTokenAmounts[j] = _takerTokenAmounts[j];
+                    gasUsed[j] = _gasUsed[j];
+                    // But the output path should still be encoded for sells.
+                    uniswapPaths[j] = _toUniswapPath(path, poolPaths[j]);
+                }
             }
         }
     }
