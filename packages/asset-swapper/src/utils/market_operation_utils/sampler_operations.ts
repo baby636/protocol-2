@@ -73,61 +73,6 @@ import {
     UniswapV3FillData,
 } from './types';
 
-// tslint:disable: max-classes-per-file
-class Collector {
-    private static getKey(keys: any[]): string {
-        return keys.map(k => k.toString()).join('-');
-    }
-    constructor(
-        public readonly source: ERC20BridgeSource,
-        public results: { [key: string]: { success: number; failure: number } } = {},
-    ) {}
-
-    public isAllowed(keys: any[]): boolean {
-        const key = Collector.getKey(keys);
-        const results = this.results[key];
-        if (!results) {
-            return true;
-        }
-        if (results.success === 0 && results.failure > 1) {
-            return false;
-        }
-        return true;
-    }
-
-    public registerResult(keys: any[], result: { gasUsed: BigNumber[]; samples: BigNumber[] }): void {
-        const key = Collector.getKey(keys);
-        const isSuccess = result.samples.find(r => r.isGreaterThan(0));
-        if (!this.results[key]) {
-            this.results[key] = { success: 0, failure: 0 };
-        }
-
-        isSuccess ? this.results[key].success++ : this.results[key].failure++;
-        if (!this.isAllowed(keys)) {
-            // console.log(`Deregistering ${this.source} ${keys} ${this.results[key].failure}`);
-        }
-    }
-}
-
-const badFillCollector: { [source: string]: Collector } = {};
-const isFillDataBad = (source: ERC20BridgeSource, keys: any[]): boolean => {
-    if (!badFillCollector[source]) {
-        badFillCollector[source.toString()] = new Collector(source);
-    }
-    return badFillCollector[source].isAllowed(keys);
-};
-
-const registerResults = (
-    source: ERC20BridgeSource,
-    keys: any[],
-    result: { gasUsed: BigNumber[]; samples: BigNumber[] },
-): void => {
-    if (!badFillCollector[source]) {
-        badFillCollector[source.toString()] = new Collector(source);
-    }
-    badFillCollector[source].registerResult(keys, result);
-};
-
 /**
  * Source filters for `getTwoHopBuyQuotes()` and `getTwoHopSellQuotes()`.
  */
@@ -339,10 +284,6 @@ export class SamplerOperations {
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.KyberDmm, [router, ...tokenAddressPath], {
-                    gasUsed,
-                    samples,
-                });
                 _log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
@@ -391,10 +332,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.Uniswap, [router, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
@@ -443,10 +380,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(source, [router, ...tokenAddressPath], {
-                    gasUsed,
-                    samples,
-                });
                 _log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
                 return samples;
             },
@@ -561,10 +494,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.Eth2Dai, [router, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.Eth2Dai,
                     gasUsed: gasUsed.map(g => g.toString(10)),
@@ -635,10 +564,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(source, [pool.poolAddress, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source,
                     pool: pool.poolAddress,
@@ -712,10 +637,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(source, [poolInfo.poolId, poolInfo.vault, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source,
                     fillData,
@@ -859,10 +780,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.MStable, [router, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.MStable,
                     fillData,
@@ -892,10 +809,6 @@ export class SamplerOperations {
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.Bancor, [registry, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.Bancor,
                     fillData,
@@ -952,10 +865,6 @@ export class SamplerOperations {
                 >('sampleSellsFromMooniswap', callResults);
                 fillData.poolAddress = poolAddress;
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.Mooniswap, [registry, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.Mooniswap,
                     poolAddress,
@@ -1016,10 +925,6 @@ export class SamplerOperations {
                     inputAmount: takerFillAmounts[i],
                 }));
                 fillData.gasUsed = gasUsed;
-                registerResults(source, [router, quoter, ...tokenAddressPath], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.UniswapV3,
                     gasUsed,
@@ -1196,10 +1101,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(source, [poolAddress, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.Shell,
                     fillData,
@@ -1258,10 +1159,6 @@ export class SamplerOperations {
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.Dodo, [opts.registry, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.Dodo,
                     fillData,
@@ -1320,10 +1217,6 @@ export class SamplerOperations {
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.gasUsed = gasUsed;
-                registerResults(ERC20BridgeSource.DodoV2, [registry, offset, makerToken, takerToken], {
-                    gasUsed,
-                    samples,
-                });
                 _log({
                     source: ERC20BridgeSource.DodoV2,
                     fillData,
@@ -1387,14 +1280,6 @@ export class SamplerOperations {
                     callResults,
                 );
                 fillData.gasUsed = gasUsed;
-                registerResults(
-                    ERC20BridgeSource.MakerPsm,
-                    [psmInfo.psmAddress, psmInfo.gemTokenAddress, psmInfo.ilkIdentifier, makerToken, takerToken],
-                    {
-                        gasUsed,
-                        samples,
-                    },
-                );
                 _log({
                     source: ERC20BridgeSource.MakerPsm,
                     fillData,
