@@ -155,77 +155,65 @@ export interface CurveFillData extends FillData {
     fromTokenIdx: number;
     toTokenIdx: number;
     pool: CurveInfo;
-    gasUsed: BigNumber[];
 }
 
 export interface BalancerFillData extends FillData {
     poolAddress: string;
-    gasUsed: BigNumber[];
 }
 
 export interface BalancerV2FillData extends FillData {
     vault: string;
     poolId: string;
-    gasUsed: BigNumber[];
 }
 
 export interface UniswapV2FillData extends FillData {
     tokenAddressPath: string[];
     router: string;
-    gasUsed: BigNumber[];
 }
 
 export interface ShellFillData extends FillData {
     poolAddress: string;
-    gasUsed: BigNumber[];
 }
 
 export interface LiquidityProviderFillData extends FillData {
     poolAddress: string;
     gasCost: number;
-    gasUsed: BigNumber[];
 }
 
 export interface BancorFillData extends FillData {
     path: string[];
     networkAddress: string;
-    gasUsed: BigNumber[];
 }
 
 export interface KyberFillData extends FillData {
     hint: string;
     reserveId: string;
     networkProxy: string;
-    gasUsed: BigNumber[];
 }
 
 export interface MooniswapFillData extends FillData {
     poolAddress: string;
-    gasUsed: BigNumber[];
 }
 
 export interface DODOFillData extends FillData {
     poolAddress: string;
     isSellBase: boolean;
     helperAddress: string;
-    gasUsed: BigNumber[];
 }
 
 export interface GenericRouterFillData extends FillData {
     router: string;
-    gasUsed: BigNumber[];
 }
 
 export interface MultiHopFillData extends FillData {
-    firstHopSource: SourceQuoteOperation;
-    secondHopSource: SourceQuoteOperation;
+    firstHopSource: MeasuredSourceQuoteOperation;
+    secondHopSource: MeasuredSourceQuoteOperation;
     intermediateToken: string;
 }
 
 export interface MakerPsmExtendedData {
     isSellOperation: boolean;
     takerToken: string;
-    gasUsed: BigNumber[];
 }
 
 export type MakerPsmFillData = FillData & MakerPsmExtendedData & PsmInfo;
@@ -239,12 +227,10 @@ export interface UniswapV3FillData extends FillData {
     tokenAddressPath: string[];
     router: string;
     pathAmounts: Array<{ uniswapPath: string; inputAmount: BigNumber }>;
-    gasUsed: BigNumber[];
 }
 
 export interface KyberDmmFillData extends UniswapV2FillData {
     poolsPath: string[];
-    gasUsed: BigNumber[];
 }
 
 export interface FinalUniswapV3FillData extends Omit<UniswapV3FillData, 'uniswapPaths'> {
@@ -439,7 +425,6 @@ export interface GetMarketOrdersOpts {
      * hopping to. E.g DAI->USDC via an adjacent token WETH
      */
     tokenAdjacencyGraph: TokenAdjacencyGraph;
-    gasPrice?: BigNumber;
 }
 
 /**
@@ -449,6 +434,17 @@ export interface BatchedOperation<TResult> {
     encodeCall(): string;
     handleCallResults(callResults: string): TResult;
     handleRevert(callResults: string): TResult;
+}
+
+export interface MeasuredSamplerResult {
+    gasUsed: BigNumber[];
+    samples: BigNumber[];
+}
+
+export interface MeasuredSourceQuoteOperation<TFillData extends FillData = FillData>
+    extends BatchedOperation<MeasuredSamplerResult> {
+    readonly source: ERC20BridgeSource;
+    fillData: TFillData;
 }
 
 export interface SourceQuoteOperation<TFillData extends FillData = FillData> extends BatchedOperation<BigNumber[]> {
@@ -523,7 +519,7 @@ export interface GenerateOptimizedOrdersOpts {
     exchangeProxyOverhead?: ExchangeProxyOverhead;
     allowFallback?: boolean;
     shouldBatchBridgeOrders?: boolean;
-    gasPrice?: BigNumber;
+    gasPrice: BigNumber;
 }
 
 export interface ComparisonPrice {

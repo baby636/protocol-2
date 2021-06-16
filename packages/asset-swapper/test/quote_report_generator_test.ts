@@ -303,15 +303,15 @@ describe('generateQuoteReport', async () => {
                 source: ERC20BridgeSource.Balancer,
                 fillData: {},
                 encodeCall: () => '',
-                handleCallResults: _callResults => [new BigNumber(1337)],
-                handleRevert: _c => [],
+                handleCallResults: _callResults => ({ gasUsed: [], samples: [new BigNumber(1337)] }),
+                handleRevert: _c => ({ gasUsed: [], samples: [] }),
             },
             secondHopSource: {
                 source: ERC20BridgeSource.Curve,
                 fillData: {},
                 encodeCall: () => '',
-                handleCallResults: _callResults => [new BigNumber(1337)],
-                handleRevert: _c => [],
+                handleCallResults: _callResults => ({ gasUsed: [], samples: [new BigNumber(1337)] }),
+                handleRevert: _c => ({ gasUsed: [], samples: [] }),
             },
         };
         const twoHopSample: DexSample<MultiHopFillData> = {

@@ -357,6 +357,7 @@ export class MarketOperationUtils {
     public async getBatchMarketBuyOrdersAsync(
         batchNativeOrders: SignedNativeOrder[][],
         makerAmounts: BigNumber[],
+        gasPrice: BigNumber,
         opts?: Partial<GetMarketOrdersOpts>,
     ): Promise<Array<OptimizerResult | undefined>> {
         if (batchNativeOrders.length === 0) {
@@ -440,6 +441,7 @@ export class MarketOperationUtils {
                             excludedSources: _opts.excludedSources,
                             feeSchedule: _opts.feeSchedule,
                             allowFallback: _opts.allowFallback,
+                            gasPrice,
                         },
                     );
                     return optimizerResult;
@@ -592,6 +594,7 @@ export class MarketOperationUtils {
         nativeOrders: SignedNativeOrder[],
         amount: BigNumber,
         side: MarketOperation,
+        gasPrice: BigNumber,
         opts?: Partial<GetMarketOrdersOpts>,
     ): Promise<OptimizerResultWithReport> {
         const _opts = { ...DEFAULT_GET_MARKET_ORDERS_OPTS, ...opts };
@@ -602,7 +605,7 @@ export class MarketOperationUtils {
             feeSchedule: _opts.feeSchedule,
             allowFallback: _opts.allowFallback,
             exchangeProxyOverhead: _opts.exchangeProxyOverhead,
-            gasPrice: _opts.gasPrice,
+            gasPrice,
         };
 
         if (nativeOrders.length === 0) {

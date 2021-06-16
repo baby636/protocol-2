@@ -62,6 +62,7 @@ const SELL_SOURCES = SELL_SOURCE_FILTER_BY_CHAIN_ID[ChainId.Mainnet].sources;
 const TOKEN_ADJACENCY_GRAPH: TokenAdjacencyGraph = { default: [] };
 
 const SIGNATURE = { v: 1, r: NULL_BYTES, s: NULL_BYTES, signatureType: SignatureType.EthSign };
+const GAS_PRICE = new BigNumber(1);
 
 /**
  * gets the orders required for a market sell operation by (potentially) merging native orders with
@@ -77,7 +78,7 @@ async function getMarketSellOrdersAsync(
     takerAmount: BigNumber,
     opts?: Partial<GetMarketOrdersOpts>,
 ): Promise<OptimizerResultWithReport> {
-    return utils.getOptimizerResultAsync(nativeOrders, takerAmount, MarketOperation.Sell, opts);
+    return utils.getOptimizerResultAsync(nativeOrders, takerAmount, MarketOperation.Sell, GAS_PRICE, opts);
 }
 
 /**
@@ -94,7 +95,7 @@ async function getMarketBuyOrdersAsync(
     makerAmount: BigNumber,
     opts?: Partial<GetMarketOrdersOpts>,
 ): Promise<OptimizerResultWithReport> {
-    return utils.getOptimizerResultAsync(nativeOrders, makerAmount, MarketOperation.Buy, opts);
+    return utils.getOptimizerResultAsync(nativeOrders, makerAmount, MarketOperation.Buy, GAS_PRICE, opts);
 }
 
 class MockPoolsCache extends PoolsCache {
@@ -254,11 +255,7 @@ describe('MarketOperationUtils tests', () => {
             _wethAddress: string,
         ) => {
             return BATCH_SOURCE_FILTERS.getAllowed(sources).map(s =>
-                createSamplesFromRates(
-                    s,
-                    fillAmounts,
-                    rates[s].map(r => new BigNumber(1).div(r)),
-                ),
+                createSamplesFromRates(s, fillAmounts, rates[s].map(r => new BigNumber(1).div(r))),
             );
         };
     }
@@ -629,6 +626,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS,
                     totalAssetAmount,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     DEFAULT_OPTS,
                 );
                 mockedMarketOpUtils.verifyAll();
@@ -740,6 +738,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS,
                     Web3Wrapper.toBaseUnitAmount(1, 18),
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         feeSchedule,
@@ -786,6 +785,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS,
                     totalAssetAmount,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         rfqt: {
@@ -833,6 +833,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS.slice(2, ORDERS.length),
                     totalAssetAmount,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         rfqt: {
@@ -892,6 +893,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS.slice(1, ORDERS.length),
                     totalAssetAmount,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         rfqt: {
@@ -950,6 +952,7 @@ describe('MarketOperationUtils tests', () => {
                     ORDERS.slice(2, ORDERS.length),
                     totalAssetAmount,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         rfqt: {
@@ -993,6 +996,7 @@ describe('MarketOperationUtils tests', () => {
                         ORDERS.slice(2, ORDERS.length),
                         ORDERS[0].order.takerAmount,
                         MarketOperation.Sell,
+                        GAS_PRICE,
                         DEFAULT_OPTS,
                     );
                     expect.fail(`Call should have thrown "${AggregationError.NoOptimalPath}" but instead succeded`);
@@ -1239,6 +1243,7 @@ describe('MarketOperationUtils tests', () => {
                     ],
                     FILL_AMOUNT,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         includedSources: [ERC20BridgeSource.LiquidityProvider],
                         excludedSources: [],
@@ -1288,6 +1293,7 @@ describe('MarketOperationUtils tests', () => {
                     createOrdersFromSellRates(FILL_AMOUNT, rates[ERC20BridgeSource.Native]),
                     FILL_AMOUNT,
                     MarketOperation.Sell,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         numSamples: 4,
@@ -1671,6 +1677,7 @@ describe('MarketOperationUtils tests', () => {
                     createOrdersFromSellRates(FILL_AMOUNT, rates[ERC20BridgeSource.Native]),
                     FILL_AMOUNT,
                     MarketOperation.Buy,
+                    GAS_PRICE,
                     {
                         ...DEFAULT_OPTS,
                         numSamples: 4,
@@ -1738,6 +1745,7 @@ describe('MarketOperationUtils tests', () => {
                 targetInput: takerAmount.minus(1),
                 outputAmountPerEth,
                 feeSchedule,
+                gasPrice: GAS_PRICE,
             });
             expect((path[0][0].fillData as NativeFillData).order.maker).to.eq(smallOrder.order.maker);
             expect(path[0][0].input).to.be.bignumber.eq(takerAmount.minus(1));
@@ -1751,6 +1759,7 @@ describe('MarketOperationUtils tests', () => {
                 targetInput: POSITIVE_INF,
                 outputAmountPerEth,
                 feeSchedule,
+                gasPrice: GAS_PRICE,
             });
             expect((path[0][0].fillData as NativeFillData).order.maker).to.eq(largeOrder.order.maker);
             expect((path[0][1].fillData as NativeFillData).order.maker).to.eq(smallOrder.order.maker);

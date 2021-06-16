@@ -13,6 +13,7 @@ import { DexSample, ERC20BridgeSource, FeeSchedule, Fill } from './types';
  */
 export function createFills(opts: {
     side: MarketOperation;
+    gasPrice: BigNumber;
     orders?: NativeOrderWithFillableAmounts[];
     dexQuotes?: DexSample[][];
     targetInput?: BigNumber;
@@ -20,7 +21,6 @@ export function createFills(opts: {
     inputAmountPerEth?: BigNumber;
     excludedSources?: ERC20BridgeSource[];
     feeSchedule?: FeeSchedule;
-    gasPrice?: BigNumber;
 }): Fill[][] {
     const { side } = opts;
     const excludedSources = opts.excludedSources || [];
@@ -139,7 +139,7 @@ function dexSamplesToFills(
     outputAmountPerEth: BigNumber,
     inputAmountPerEth: BigNumber,
     fees: FeeSchedule,
-    gasPrice?: BigNumber,
+    gasPrice: BigNumber,
 ): Fill[] {
     const sourcePathId = hexUtils.random();
     const fills: Fill[] = [];
@@ -154,27 +154,25 @@ function dexSamplesToFills(
         const { source, fillData } = sample;
         const input = sample.input.minus(prevSample ? prevSample.input : 0);
         const output = sample.output.minus(prevSample ? prevSample.output : 0);
-        let fee = fees[source] === undefined ? 0 : fees[source]!(sample.fillData) || 0;
-        // TODO cleanup
-        if (gasPrice && gasPrice.isGreaterThan(0)) {
-            if (!sample.gasUsed) {
-                console.log(`${sample.source} Missing gasUsed`);
-            }
-            const gasUsed = sample.gasUsed || new BigNumber(fee).dividedToIntegerBy(gasPrice);
-            const newFee = gasPrice.times(gasUsed);
+
+        let fee;
+        if (!sample.gasUsed) {
+            fee = fees[source] === undefined ? 0 : fees[source]!(sample.fillData) || 0;
+            console.log(`${sample.source} Missing gasUsed`);
+        } else {
+            fee = gasPrice.times(sample.gasUsed);
+            const oldFee = fees[source] === undefined ? 0 : fees[source]!(sample.fillData) || 0;
             // TODO remove
             // console.log({
+            //     oldFee,
             //     fee,
-            //     newFee,
             //     source: sample.source,
-            //     newGasUsed: gasUsed,
-            //     oldGasUsed: new BigNumber(fee).dividedToIntegerBy(gasPrice),
+            //     newGasUsed: sample.gasUsed,
+            //     oldGasUsed: new BigNumber(oldFee).dividedToIntegerBy(gasPrice),
             //     fillData: sample.fillData,
             // });
-            fee = newFee;
-        } else {
-            console.log('Missing gas price');
         }
+
         let penalty = ZERO_AMOUNT;
         if (i === 0) {
             // Only the first fill in a DEX path incurs a penalty.

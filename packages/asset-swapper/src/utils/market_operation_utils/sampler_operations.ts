@@ -40,6 +40,7 @@ import {
     ZERO_AMOUNT,
 } from './constants';
 import { getLiquidityProvidersForPair } from './liquidity_provider_utils';
+import { MeasuredSamplerContractOperation } from './measured_sampler_contract_operation';
 import { getIntermediateTokens } from './multihop_utils';
 import { BalancerPoolsCache, BalancerV2PoolsCache, CreamPoolsCache, PoolsCache } from './pools_cache';
 import { SamplerContractOperation } from './sampler_contract_operation';
@@ -62,6 +63,8 @@ import {
     LiquidityProviderFillData,
     LiquidityProviderRegistry,
     MakerPsmFillData,
+    MeasuredSamplerResult,
+    MeasuredSourceQuoteOperation,
     MooniswapFillData,
     MultiHopFillData,
     PsmInfo,
@@ -87,8 +90,6 @@ export const BATCH_SOURCE_FILTERS = SourceFilters.all().exclude([ERC20BridgeSour
 
 // tslint:disable:no-inferred-empty-object-type no-unbound-method
 
-// const _log = (args: any) => console.log(args);
-const _log = (args: any) => {};
 /**
  * Composable operations that can be batched in a single transaction,
  * for use with `DexOrderSampler.executeAsync()`.
@@ -220,22 +221,20 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<KyberFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Kyber,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromKyberNetwork,
             params: [{ ...kyberOpts, reserveOffset, hint: NULL_BYTES }, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: KyberFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: KyberFillData): MeasuredSamplerResult => {
                 const [reserveId, hint, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromKyberNetwork', callResults);
                 fillData.hint = hint;
                 fillData.reserveId = reserveId;
                 fillData.networkProxy = kyberOpts.networkProxy;
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return isAllowedKyberReserveId(reserveId) ? samples : [];
+                return isAllowedKyberReserveId(reserveId) ? { gasUsed, samples } : { gasUsed: [], samples: [] };
             },
         });
     }
@@ -246,22 +245,20 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<KyberFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Kyber,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromKyberNetwork,
             params: [{ ...kyberOpts, reserveOffset, hint: NULL_BYTES }, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: KyberFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: KyberFillData): MeasuredSamplerResult => {
                 const [reserveId, hint, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string, BigNumber[], BigNumber[]]
                 >('sampleBuysFromKyberNetwork', callResults);
                 fillData.hint = hint;
                 fillData.reserveId = reserveId;
                 fillData.networkProxy = kyberOpts.networkProxy;
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.Kyber, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return isAllowedKyberReserveId(reserveId) ? samples : [];
+                return isAllowedKyberReserveId(reserveId) ? { gasUsed, samples } : { gasUsed: [], samples: [] };
             },
         });
     }
@@ -270,22 +267,20 @@ export class SamplerOperations {
         router: string,
         tokenAddressPath: string[],
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<KyberDmmFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<KyberDmmFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.KyberDmm,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromKyberDmm,
             params: [router, tokenAddressPath, takerFillAmounts],
-            callback: (callResults: string, fillData: KyberDmmFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: KyberDmmFillData): MeasuredSamplerResult => {
                 const [pools, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string[], BigNumber[], BigNumber[]]
                 >('sampleSellsFromKyberDmm', callResults);
                 fillData.poolsPath = pools;
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -294,22 +289,20 @@ export class SamplerOperations {
         router: string,
         tokenAddressPath: string[],
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<KyberDmmFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<KyberDmmFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.KyberDmm,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromKyberDmm,
             params: [router, tokenAddressPath, makerFillAmounts],
-            callback: (callResults: string, fillData: KyberDmmFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: KyberDmmFillData): MeasuredSamplerResult => {
                 const [pools, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string[], BigNumber[], BigNumber[]]
                 >('sampleBuysFromKyberDmm', callResults);
                 fillData.poolsPath = pools;
                 fillData.router = router;
                 fillData.tokenAddressPath = tokenAddressPath;
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.KyberDmm, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -319,22 +312,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswap,
             params: [router, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromUniswap',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
-            },
         });
     }
 
@@ -343,22 +327,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Uniswap,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswap,
             params: [router, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromUniswap',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({ source: ERC20BridgeSource.Uniswap, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
-            },
         });
     }
 
@@ -367,22 +342,13 @@ export class SamplerOperations {
         tokenAddressPath: string[],
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.UniswapV2,
-    ): SourceQuoteOperation<UniswapV2FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<UniswapV2FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { tokenAddressPath, router, gasUsed: [] },
+            fillData: { tokenAddressPath, router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswapV2,
             params: [router, tokenAddressPath, takerFillAmounts],
-            callback: (callResults: string, fillData: UniswapV2FillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromUniswapV2',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
-            },
         });
     }
 
@@ -391,22 +357,13 @@ export class SamplerOperations {
         tokenAddressPath: string[],
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.UniswapV2,
-    ): SourceQuoteOperation<UniswapV2FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<UniswapV2FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { tokenAddressPath, router, gasUsed: [] },
+            fillData: { tokenAddressPath, router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswapV2,
             params: [router, tokenAddressPath, makerFillAmounts],
-            callback: (callResults: string, fillData: UniswapV2FillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromUniswapV2',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({ source, tokenAddressPath, gasUsed: gasUsed.map(g => g.toString(10)) });
-                return samples;
-            },
         });
     }
 
@@ -416,30 +373,17 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         gasCost: number,
-    ): SourceQuoteOperation<LiquidityProviderFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<LiquidityProviderFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.LiquidityProvider,
             fillData: {
                 poolAddress: providerAddress,
+                // TODO jacob remove this gasCost with SwapRevertSampling
                 gasCost,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromLiquidityProvider,
             params: [providerAddress, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: LiquidityProviderFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromLiquidityProvider',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.LiquidityProvider,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -449,30 +393,17 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
         gasCost: number,
-    ): SourceQuoteOperation<LiquidityProviderFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<LiquidityProviderFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.LiquidityProvider,
             fillData: {
                 poolAddress: providerAddress,
+                // TODO jacob remove this gasCost with SwapRevertSampling
                 gasCost,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromLiquidityProvider,
             params: [providerAddress, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: LiquidityProviderFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromLiquidityProvider',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.LiquidityProvider,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -481,25 +412,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Eth2Dai,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromEth2Dai,
             params: [router, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromEth2Dai',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Eth2Dai,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -508,25 +427,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Eth2Dai,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromEth2Dai,
             params: [router, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromEth2Dai',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Eth2Dai,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -536,14 +443,13 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.Curve,
-    ): SourceQuoteOperation<CurveFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<CurveFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             fillData: {
                 pool,
                 fromTokenIdx: pool.takerTokenIdx,
                 toTokenIdx: pool.makerTokenIdx,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromCurve,
@@ -558,19 +464,6 @@ export class SamplerOperations {
                 makerToken,
                 takerFillAmounts,
             ],
-            callback: (callResults: string, fillData: CurveFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromCurve',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    pool: pool.poolAddress,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -580,14 +473,13 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.Curve,
-    ): SourceQuoteOperation<CurveFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<CurveFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             fillData: {
                 pool,
                 fromTokenIdx: pool.takerTokenIdx,
                 toTokenIdx: pool.makerTokenIdx,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromCurve,
@@ -602,19 +494,6 @@ export class SamplerOperations {
                 makerToken,
                 makerFillAmounts,
             ],
-            callback: (callResults: string, fillData: CurveFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromCurve',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    pool: pool.poolAddress,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -624,26 +503,13 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource,
-    ): SourceQuoteOperation<BalancerV2FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<BalancerV2FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { ...poolInfo, gasUsed: [] },
+            fillData: { ...poolInfo },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: BalancerV2FillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromBalancerV2',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -653,26 +519,13 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource,
-    ): SourceQuoteOperation<BalancerV2FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<BalancerV2FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { ...poolInfo, gasUsed: [] },
+            fillData: { ...poolInfo },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancerV2,
             params: [poolInfo, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: BalancerV2FillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromBalancerV2',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -682,26 +535,13 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource,
-    ): SourceQuoteOperation<BalancerFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<BalancerFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { poolAddress, gasUsed: [] },
+            fillData: { poolAddress },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBalancer,
             params: [poolAddress, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: BalancerFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromBalancer',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -711,26 +551,13 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource,
-    ): SourceQuoteOperation<BalancerFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<BalancerFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
-            fillData: { poolAddress, gasUsed: [] },
+            fillData: { poolAddress },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBalancer,
             params: [poolAddress, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: BalancerFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromBalancer',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -739,26 +566,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.MStable,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMStable,
             params: [router, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromMStable',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.MStable,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -767,26 +581,13 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<GenericRouterFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<GenericRouterFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.MStable,
-            fillData: { router, gasUsed: [] },
+            fillData: { router },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMStable,
             params: [router, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: GenericRouterFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromMStable',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.MStable,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -795,26 +596,20 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<BancorFillData> {
+    ): MeasuredSourceQuoteOperation<BancorFillData> {
         const paths = this._bancorService ? this._bancorService.getPaths(takerToken, makerToken) : [];
-        return new SamplerContractOperation({
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Bancor,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromBancor,
             params: [{ registry, paths }, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: BancorFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: BancorFillData): MeasuredSamplerResult => {
                 const [networkAddress, path, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string[], BigNumber[], BigNumber[]]
                 >('sampleSellsFromBancor', callResults);
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Bancor,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -825,25 +620,19 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<BancorFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<BancorFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Bancor,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromBancor,
             params: [{ registry, paths: [] }, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: BancorFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: BancorFillData): MeasuredSamplerResult => {
                 const [networkAddress, path, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, string[], BigNumber[], BigNumber[]]
                 >('sampleBuysFromBancor', callResults);
                 fillData.networkAddress = networkAddress;
                 fillData.path = path;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Bancor,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -853,24 +642,18 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<MooniswapFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<MooniswapFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Mooniswap,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMooniswap,
             params: [registry, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: MooniswapFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: MooniswapFillData): MeasuredSamplerResult => {
                 const [poolAddress, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromMooniswap', callResults);
                 fillData.poolAddress = poolAddress;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Mooniswap,
-                    poolAddress,
-                    gasUsed,
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -880,24 +663,18 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<MooniswapFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<MooniswapFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Mooniswap,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMooniswap,
             params: [registry, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: MooniswapFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: MooniswapFillData): MeasuredSamplerResult => {
                 const [poolAddress, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string, BigNumber[], BigNumber[]]
                 >('sampleBuysFromMooniswap', callResults);
                 fillData.poolAddress = poolAddress;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Mooniswap,
-                    poolAddress,
-                    gasUsed,
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -908,13 +685,13 @@ export class SamplerOperations {
         tokenAddressPath: string[],
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.UniswapV3,
-    ): SourceQuoteOperation<UniswapV3FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<UniswapV3FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromUniswapV3,
             params: [quoter, router, tokenAddressPath, takerFillAmounts],
-            callback: (callResults: string, fillData: UniswapV3FillData): BigNumber[] => {
+            callback: (callResults: string, fillData: UniswapV3FillData): MeasuredSamplerResult => {
                 const [paths, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string[], BigNumber[], BigNumber[]]
                 >('sampleSellsFromUniswapV3', callResults);
@@ -924,13 +701,7 @@ export class SamplerOperations {
                     uniswapPath,
                     inputAmount: takerFillAmounts[i],
                 }));
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.UniswapV3,
-                    gasUsed,
-                    path: tokenAddressPath,
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -941,13 +712,13 @@ export class SamplerOperations {
         tokenAddressPath: string[],
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.UniswapV3,
-    ): SourceQuoteOperation<UniswapV3FillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<UniswapV3FillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromUniswapV3,
             params: [quoter, router, tokenAddressPath, makerFillAmounts],
-            callback: (callResults: string, fillData: UniswapV3FillData): BigNumber[] => {
+            callback: (callResults: string, fillData: UniswapV3FillData): MeasuredSamplerResult => {
                 const [paths, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [string[], BigNumber[], BigNumber[]]
                 >('sampleBuysFromUniswapV3', callResults);
@@ -957,8 +728,7 @@ export class SamplerOperations {
                     uniswapPath,
                     inputAmount: makerFillAmounts[i],
                 }));
-                fillData.gasUsed = gasUsed;
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -1088,26 +858,13 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.Shell,
-    ): SourceQuoteOperation<ShellFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<ShellFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromShell,
             params: [poolAddress, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: ShellFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromShell',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Shell,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -1117,26 +874,13 @@ export class SamplerOperations {
         takerToken: string,
         makerFillAmounts: BigNumber[],
         source: ERC20BridgeSource = ERC20BridgeSource.Shell,
-    ): SourceQuoteOperation<ShellFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<ShellFillData> {
+        return new MeasuredSamplerContractOperation({
             source,
             fillData: { poolAddress, gasUsed: [] },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromShell,
             params: [poolAddress, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: ShellFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromShell',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Shell,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -1145,26 +889,20 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<DODOFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<DODOFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Dodo,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromDODO,
             params: [opts, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: DODOFillData): MeasuredSamplerResult => {
                 const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODO', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Dodo,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -1174,26 +912,20 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<DODOFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<DODOFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.Dodo,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromDODO,
             params: [opts, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: DODOFillData): MeasuredSamplerResult => {
                 const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleBuysFromDODO', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
                 fillData.helperAddress = opts.helper;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.Dodo,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -1204,25 +936,19 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<DODOFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<DODOFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.DodoV2,
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromDODOV2,
             params: [registry, offset, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: DODOFillData): MeasuredSamplerResult => {
                 const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.DodoV2,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -1233,25 +959,19 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<DODOFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<DODOFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.DodoV2,
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromDODOV2,
             params: [registry, offset, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: DODOFillData): BigNumber[] => {
+            callback: (callResults: string, fillData: DODOFillData): MeasuredSamplerResult => {
                 const [isSellBase, pool, gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<
                     [boolean, string, BigNumber[], BigNumber[]]
                 >('sampleSellsFromDODOV2', callResults);
                 fillData.isSellBase = isSellBase;
                 fillData.poolAddress = pool;
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.DodoV2,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
+                return { gasUsed, samples };
             },
         });
     }
@@ -1261,32 +981,18 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<MakerPsmFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<MakerPsmFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.MakerPsm,
             fillData: {
                 isSellOperation: true,
                 takerToken,
                 makerToken,
                 ...psmInfo,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleSellsFromMakerPsm,
             params: [psmInfo, takerToken, makerToken, takerFillAmounts],
-            callback: (callResults: string, fillData: MakerPsmFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleSellsFromMakerPsm',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.MakerPsm,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -1295,32 +1001,18 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<MakerPsmFillData> {
-        return new SamplerContractOperation({
+    ): MeasuredSourceQuoteOperation<MakerPsmFillData> {
+        return new MeasuredSamplerContractOperation({
             source: ERC20BridgeSource.MakerPsm,
             fillData: {
                 isSellOperation: false,
                 takerToken,
                 makerToken,
                 ...psmInfo,
-                gasUsed: [],
             },
             contract: this._samplerContract,
             function: this._samplerContract.sampleBuysFromMakerPsm,
             params: [psmInfo, takerToken, makerToken, makerFillAmounts],
-            callback: (callResults: string, fillData: MakerPsmFillData): BigNumber[] => {
-                const [gasUsed, samples] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], BigNumber[]]>(
-                    'sampleBuysFromMakerPsm',
-                    callResults,
-                );
-                fillData.gasUsed = gasUsed;
-                _log({
-                    source: ERC20BridgeSource.MakerPsm,
-                    fillData,
-                    gasUsed: gasUsed.map(g => g.toString(10)),
-                });
-                return samples;
-            },
         });
     }
 
@@ -1338,11 +1030,12 @@ export class SamplerOperations {
         });
         return this._createBatch(
             subOps,
-            (samples: BigNumber[][]) => {
-                if (samples.length === 0) {
+            (results: MeasuredSamplerResult[]) => {
+                if (results.length === 0) {
                     return ZERO_AMOUNT;
                 }
-                const flatSortedSamples = samples
+                const flatSortedSamples = results
+                    .map(r => r.samples)
                     .reduce((acc, v) => acc.concat(...v))
                     .filter(v => !v.isZero())
                     .sort((a, b) => a.comparedTo(b));
@@ -1365,14 +1058,14 @@ export class SamplerOperations {
         const subOps = this._getSellQuoteOperations(sources, makerToken, takerToken, takerFillAmounts);
         return this._createBatch(
             subOps,
-            (samples: BigNumber[][]) => {
+            (results: MeasuredSamplerResult[]) => {
                 return subOps.map((op, i) => {
-                    return samples[i].map((output, j) => ({
+                    return results[i].samples.map((output, j) => ({
                         source: op.source,
                         output,
                         input: takerFillAmounts[j],
                         fillData: op.fillData,
-                        gasUsed: ((op.fillData as any).gasUsed && (op.fillData as any).gasUsed[j]) || undefined,
+                        gasUsed: results[i].gasUsed[j],
                     }));
                 });
             },
@@ -1389,13 +1082,14 @@ export class SamplerOperations {
         const subOps = this._getBuyQuoteOperations(sources, makerToken, takerToken, makerFillAmounts);
         return this._createBatch(
             subOps,
-            (samples: BigNumber[][]) => {
+            (results: MeasuredSamplerResult[]) => {
                 return subOps.map((op, i) => {
-                    return samples[i].map((output, j) => ({
+                    return results[i].samples.map((output, j) => ({
                         source: op.source,
                         output,
                         input: makerFillAmounts[j],
                         fillData: op.fillData,
+                        gasUsed: results[i].gasUsed[j],
                     }));
                 });
             },
@@ -1409,7 +1103,7 @@ export class SamplerOperations {
         takerToken: string,
         takerFillAmounts: BigNumber[],
         tokenAdjacencyGraph: TokenAdjacencyGraph = this.tokenAdjacencyGraph,
-    ): SourceQuoteOperation[] {
+    ): MeasuredSourceQuoteOperation[] {
         // Find the adjacent tokens in the provided tooken adjacency graph,
         // e.g if this is DAI->USDC we may check for DAI->WETH->USDC
         const intermediateTokens = getIntermediateTokens(makerToken, takerToken, tokenAdjacencyGraph);
@@ -1419,7 +1113,7 @@ export class SamplerOperations {
             .getAllowed(sources);
         const allOps = _.flatten(
             _sources.map(
-                (source): SourceQuoteOperation | SourceQuoteOperation[] => {
+                (source): MeasuredSourceQuoteOperation | MeasuredSourceQuoteOperation[] => {
                     if (isBadTokenForSource(makerToken, source) || isBadTokenForSource(takerToken, source)) {
                         return [];
                     }
@@ -1660,14 +1354,14 @@ export class SamplerOperations {
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation[] {
+    ): MeasuredSourceQuoteOperation[] {
         // Find the adjacent tokens in the provided tooken adjacency graph,
         // e.g if this is DAI->USDC we may check for DAI->WETH->USDC
         const intermediateTokens = getIntermediateTokens(makerToken, takerToken, this.tokenAdjacencyGraph);
         const _sources = BATCH_SOURCE_FILTERS.getAllowed(sources);
         return _.flatten(
             _sources.map(
-                (source): SourceQuoteOperation | SourceQuoteOperation[] => {
+                (source): MeasuredSourceQuoteOperation | MeasuredSourceQuoteOperation[] => {
                     switch (source) {
                         case ERC20BridgeSource.Eth2Dai:
                             return isValidAddress(OASIS_ROUTER_BY_CHAIN_ID[this.chainId])
